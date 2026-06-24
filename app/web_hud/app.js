@@ -287,7 +287,7 @@ function drawReactor(now) {
 function renderStatus(payload) {
   const state = payload?.state || {};
   const status = String(state.status || "STANDBY").toUpperCase();
-  const subStatus = state.sub_status || "Awaiting wake phrase";
+  const subStatus = state.sub_status || "Listening for wake phrase";
   const detail = state.detail || subStatus;
 
   appState.status = status;

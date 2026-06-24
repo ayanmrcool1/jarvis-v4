@@ -52,7 +52,7 @@ def open_url(label, url):
     except Exception as error:
         return {
             "success": False,
-            "message": f"Failed to open {label}: {error}",
+            "message": f"I couldn't open {label}: {error}",
         }
 
 
@@ -94,7 +94,7 @@ def run_routine_step(step):
         except Exception as error:
             return {
                 "success": False,
-                "message": f"Failed to wait: {error}",
+                "message": f"I couldn't wait: {error}",
             }
 
     if step_type == "message":

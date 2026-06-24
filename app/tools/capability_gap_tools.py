@@ -214,7 +214,7 @@ def _failure_reason(result):
         if value:
             return _clean_text(value)
 
-    return "Jarvis could not complete the request."
+    return "Jarvis couldn't complete the request."
 
 
 def _format_tool_attempt(tool_name, arguments):
@@ -290,7 +290,7 @@ def should_log_tool_failure(tool_name, arguments_json, result):
             return False
 
     if tool_name in {"complete_todo_task", "remove_todo_task"}:
-        if result.get("match_type") in {"missing", "not_found", "ambiguous"}:
+        if result.get("match_type") in {"missing", "not_found", "ambiguous", "close_match"}:
             return False
 
     if tool_name in {"forget_memory", "forget_user_profile_detail", "delete_routine"} and not result.get("error"):
@@ -325,7 +325,7 @@ def log_capability_gap(
         attempted = "No concrete attempt was recorded."
 
     if not failure_reason:
-        failure_reason = "Jarvis could not complete the request."
+        failure_reason = "Jarvis couldn't complete the request."
 
     gap = {
         "timestamp": _now(),
@@ -352,7 +352,7 @@ def log_capability_gap(
     return {
         "success": True,
         "message": "Capability gap logged.",
-        "spoken_message": "I cannot do that yet, but I logged the gap.",
+        "spoken_message": "I can't do that yet, but I logged the gap.",
         "gap": gap,
         "gap_count": len(gaps),
         "path": str(CAPABILITY_GAPS_PATH),
@@ -430,8 +430,8 @@ def summarize_capability_gaps(limit=5, category=None):
     if not gaps:
         return {
             "success": True,
-            "message": "I do not have any recent capability gaps logged.",
-            "spoken_message": "I do not have any recent capability gaps logged.",
+            "message": "No recent capability gaps logged.",
+            "spoken_message": "No recent capability gaps logged.",
             "gaps": [],
             "path": str(CAPABILITY_GAPS_PATH),
         }
@@ -464,7 +464,7 @@ def summarize_capability_gaps(limit=5, category=None):
     if len(spoken_items) == 1:
         spoken = f"Recently, the main gap was: {spoken_items[0]}."
     else:
-        spoken = "Recently, I have struggled with: " + "; ".join(spoken_items) + "."
+        spoken = "Recently, I've had trouble with: " + "; ".join(spoken_items) + "."
 
     if category_text:
         spoken += f" The main categories are {category_text}."

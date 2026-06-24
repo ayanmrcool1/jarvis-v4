@@ -940,7 +940,7 @@ def _natural_click_failure_message(verification=None, retried=False):
         return "I clicked it, but it didn't look like anything changed."
 
     if retried:
-        return "I tried, but I’m not confident that worked."
+        return "I tried, but I'm not confident that worked."
 
     return "That didn't seem to open. I can try another visible option."
 
@@ -1155,7 +1155,7 @@ Return ONLY valid JSON:
             return {
                 "success": None,
                 "changed": None,
-                "message": "I clicked it, but I could not verify the result.",
+                "message": "I clicked it, but I couldn't verify the result.",
                 "reason": "Verification response was not valid JSON.",
                 "confidence": 0.0,
                 "raw_response": raw_text,
@@ -1174,7 +1174,7 @@ Return ONLY valid JSON:
         return {
             "success": None,
             "changed": None,
-            "message": "I clicked it, but I could not verify the result.",
+            "message": "I clicked it, but I couldn't verify the result.",
             "reason": str(error),
             "confidence": 0.0,
         }
@@ -1401,7 +1401,7 @@ Important:
         unsafe = bool(plan.get("unsafe")) or dangerous
 
         if not message:
-            message = "I’ve checked the screen."
+            message = "I've checked the screen."
 
         if action == "click":
             if unsafe:
@@ -1409,7 +1409,7 @@ Important:
                     "success": True,
                     "clicked": False,
                     "action": "ask",
-                    "message": "I can help choose, but I won’t click that without confirmation.",
+                    "message": "I can help choose, but I won't click that without confirmation.",
                     "target": target,
                     "reason": reason,
                     "confidence": confidence,
@@ -1677,5 +1677,5 @@ Important:
     except Exception as error:
         return {
             "success": False,
-            "message": f"I couldn’t act on the screen: {error}",
+            "message": f"I couldn't act on the screen: {error}",
         }

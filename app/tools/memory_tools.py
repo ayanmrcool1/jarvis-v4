@@ -83,7 +83,7 @@ def save_memory_file(memory):
     except Exception as error:
         return {
             "success": False,
-            "message": f"Failed to save memory: {error}",
+            "message": f"I couldn't save memory: {error}",
         }
 
 
@@ -163,7 +163,7 @@ def remember_memory(category, content, source="explicit", confidence=1.0, tags=N
     if not content or not content.strip():
         return {
             "success": False,
-            "message": "No memory content was provided.",
+            "message": "What should I remember?",
         }
 
     memory = load_memory_file()
@@ -194,7 +194,7 @@ def remember_memory(category, content, source="explicit", confidence=1.0, tags=N
 
     return {
         "success": True,
-        "message": f"I’ll remember that: {content.strip()}",
+        "message": f"I'll remember that: {content.strip()}",
         "spoken_message": "Got it. I'll keep that in mind.",
         "category": category,
         "memory": item,
@@ -215,7 +215,7 @@ def list_memories(category=None):
         if not memories:
             return {
                 "success": True,
-                "message": f"I do not have any memories saved under {category}.",
+                "message": f"I don't have any memories saved under {category}.",
                 "spoken_message": f"I don't have anything saved under {category}.",
                 "memories": [],
             }
@@ -244,7 +244,7 @@ def list_memories(category=None):
     if not all_contents:
         return {
             "success": True,
-            "message": "I do not have any memories saved yet.",
+            "message": "I don't have any memories saved yet.",
             "spoken_message": "I don't have anything saved yet.",
             "memories": [],
         }
@@ -259,6 +259,63 @@ def list_memories(category=None):
     }
 
 
+def preview_clear_all_memories(category=None):
+    memory = load_memory_file()
+    categories = [normalize_category(category)] if category else VALID_CATEGORIES
+    memory_count = sum(
+        len(memory.get(category_name, []))
+        for category_name in categories
+    )
+
+    return {
+        "memory_count": memory_count,
+        "categories": categories,
+    }
+
+
+def clear_all_memories(confirmed=False, category=None):
+    memory = load_memory_file()
+    categories = [normalize_category(category)] if category else VALID_CATEGORIES
+    memory_count = sum(
+        len(memory.get(category_name, []))
+        for category_name in categories
+    )
+
+    if memory_count == 0:
+        return {
+            "success": True,
+            "message": "No saved memories to clear.",
+            "spoken_message": "No saved memories to clear.",
+            "deleted_count": 0,
+        }
+
+    if not confirmed:
+        return {
+            "success": False,
+            "needs_confirmation": True,
+            "message": f"This will delete {memory_count} saved memories. Confirm?",
+            "spoken_message": f"This will delete {memory_count} saved memories. Confirm?",
+            "memory_count": memory_count,
+            "categories": categories,
+        }
+
+    for category_name in categories:
+        memory[category_name] = []
+
+    save_result = save_memory_file(memory)
+
+    if not save_result.get("success"):
+        return save_result
+
+    return {
+        "success": True,
+        "message": f"Deleted {memory_count} saved memories.",
+        "spoken_message": "Done. I cleared the saved memories.",
+        "deleted_count": memory_count,
+        "categories": categories,
+    }
+
+
 def forget_memory(query, category=None):
     """
     Deletes memories that contain the query text.
@@ -267,7 +324,7 @@ def forget_memory(query, category=None):
     if not query or not query.strip():
         return {
             "success": False,
-            "message": "No forget query was provided.",
+            "message": "What should I forget?",
         }
 
     memory = load_memory_file()
@@ -299,7 +356,7 @@ def forget_memory(query, category=None):
     if not removed:
         return {
             "success": False,
-            "message": f"I could not find a memory matching: {query}",
+            "message": f"I couldn't find a memory matching: {query}",
             "spoken_message": "I couldn't find a matching saved memory.",
         }
 

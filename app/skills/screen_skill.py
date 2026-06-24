@@ -72,13 +72,13 @@ def handle_screen_command(transcription, clean_text):
         if result.get("success") and result.get("title"):
             return {
                 "handled": True,
-                "response": f"You’re on {result.get('title')}.",
+                "response": f"You're on {result.get('title')}.",
                 "source": "screen_skill",
             }
 
         return {
             "handled": True,
-            "response": result.get("message", "I could not detect the active window."),
+            "response": result.get("message", "I couldn't detect the active window."),
             "source": "screen_skill",
         }
 
@@ -87,7 +87,7 @@ def handle_screen_command(transcription, clean_text):
 
         return {
             "handled": True,
-            "response": result.get("message", "I could not analyse the screen."),
+            "response": result.get("message", "I couldn't analyse the screen."),
             "source": "screen_skill",
         }
 

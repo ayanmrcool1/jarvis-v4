@@ -82,7 +82,7 @@ def search_youtube(query):
     except Exception as error:
         return {
             "success": False,
-            "message": f"Failed to search YouTube: {error}",
+            "message": f"I couldn't search YouTube: {error}",
         }
 
 
@@ -173,7 +173,7 @@ def play_youtube_video(query):
             "success": True,
             "query": clean_query,
             "url": search_url,
-            "message": f"I couldn’t pick a video directly, so I opened YouTube results for {clean_query}.",
+            "message": f"I couldn't pick a video directly, so I opened YouTube results for {clean_query}.",
         }
 
     except Exception as error:
@@ -193,5 +193,5 @@ def play_youtube_video(query):
         except Exception as fallback_error:
             return {
                 "success": False,
-                "message": f"Failed to open YouTube: {fallback_error}",
+                "message": f"I couldn't open YouTube: {fallback_error}",
             }

@@ -359,6 +359,6 @@ def handle_search_command(transcription, clean_text):
 
     return {
         "handled": True,
-        "response": result.get("message", f"I could not search for {query}."),
+        "response": result.get("message", f"I couldn't search for {query}."),
         "source": "search_skill",
     }

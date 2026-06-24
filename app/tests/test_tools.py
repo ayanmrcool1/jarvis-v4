@@ -15,7 +15,7 @@ print("\nTesting system stats...")
 print(get_system_stats())
 
 print("\nTesting terminal command...")
-print(run_terminal_command("echo Jarvis tools are online"))
+print(run_terminal_command("echo Jarvis tools are working"))
 
 print("\nTesting web search...")
 print(search_web("Nasdaq futures"))

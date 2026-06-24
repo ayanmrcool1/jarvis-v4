@@ -31,7 +31,7 @@ def _focused_browser_check():
     if not window.get("success"):
         return {
             "success": False,
-            "message": window.get("message", "I could not detect the active window."),
+            "message": window.get("message", "I couldn't detect the active window."),
             "window": window,
         }
 
@@ -143,7 +143,7 @@ def close_current_browser_tab():
     except Exception as error:
         return {
             "success": False,
-            "message": f"I could not close the current tab: {error}",
+            "message": f"I couldn't close the current tab: {error}",
             "window": check.get("window"),
         }
 
@@ -193,7 +193,7 @@ def switch_browser_tab(tab_number):
     except Exception as error:
         return {
             "success": False,
-            "message": f"I could not switch tabs: {error}",
+            "message": f"I couldn't switch tabs: {error}",
             "tab_number": tab_number,
             "window": check.get("window"),
         }
@@ -248,7 +248,7 @@ def close_browser_tabs_matching(match_text="youtube", max_tabs=30):
 
                 return {
                     "success": False,
-                    "message": page.get("message", "I could not read the current browser tab."),
+                    "message": page.get("message", "I couldn't read the current browser tab."),
                     "closed_count": closed_count,
                     "match_text": match_text,
                     "page": page,
@@ -321,7 +321,7 @@ def close_browser_tabs_matching(match_text="youtube", max_tabs=30):
                 "hard_iteration_limit",
                 "safety_time_limit",
             ]:
-                message = f"I could not find any {match_text} tabs in the safe scan."
+                message = f"I didn't find any {match_text} tabs in the safe scan."
             else:
                 message = f"I couldn't find any {match_text} tabs to close."
 
@@ -346,7 +346,7 @@ def close_browser_tabs_matching(match_text="youtube", max_tabs=30):
 
         return {
             "success": False,
-            "message": f"I could not close matching tabs: {error}",
+            "message": f"I couldn't close matching tabs: {error}",
             "closed_count": closed_count,
             "match_text": match_text,
             "scanned_non_matching_tabs": scanned_non_matching_tabs,

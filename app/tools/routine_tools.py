@@ -1,4 +1,5 @@
 import json
+import difflib
 import re
 from pathlib import Path
 
@@ -59,7 +60,7 @@ def save_routines_file(routines):
     except Exception as error:
         return {
             "success": False,
-            "message": f"Failed to save routines: {error}",
+            "message": f"I couldn't save routines: {error}",
         }
 
 
@@ -76,6 +77,129 @@ def make_routine_key(routine_name):
     clean = re.sub(r"\s+", "_", clean)
 
     return clean
+
+
+def _normalise_lookup_text(text):
+    clean = str(text or "").lower()
+    clean = clean.replace("&", " and ")
+    clean = re.sub(r"[^a-z0-9]+", " ", clean)
+
+    ignored_words = {
+        "a",
+        "an",
+        "the",
+        "my",
+        "routine",
+        "routines",
+        "called",
+        "named",
+        "trigger",
+        "phrase",
+    }
+
+    words = [
+        word
+        for word in clean.split()
+        if word and word not in ignored_words
+    ]
+
+    return {
+        "spaced": " ".join(words),
+        "compact": "".join(words),
+        "words": set(words),
+    }
+
+
+def _routine_display_name(routine_key, routine_data):
+    if isinstance(routine_data, dict):
+        return str(routine_data.get("display_name") or routine_key).strip()
+
+    return str(routine_key).strip()
+
+
+def _routine_lookup_values(routine_key, routine_data):
+    values = [routine_key, _routine_display_name(routine_key, routine_data)]
+
+    if isinstance(routine_data, dict):
+        values.extend(routine_data.get("trigger_phrases") or [])
+
+    return [
+        str(value).strip()
+        for value in values
+        if str(value or "").strip()
+    ]
+
+
+def _routine_similarity(query, candidate):
+    query_data = _normalise_lookup_text(query)
+    candidate_data = _normalise_lookup_text(candidate)
+
+    if not query_data["compact"] or not candidate_data["compact"]:
+        return 0.0
+
+    char_score = difflib.SequenceMatcher(
+        None,
+        query_data["compact"],
+        candidate_data["compact"],
+    ).ratio()
+
+    if query_data["words"] and candidate_data["words"]:
+        overlap = len(query_data["words"] & candidate_data["words"])
+        token_score = overlap / max(len(query_data["words"]), len(candidate_data["words"]))
+    else:
+        token_score = 0.0
+
+    return max(char_score, (char_score * 0.75) + (token_score * 0.25))
+
+
+def _find_exact_routine_key(routines, routine_name):
+    wanted = _normalise_lookup_text(routine_name)["compact"]
+
+    if not wanted:
+        return None
+
+    for routine_key, routine_data in routines.items():
+        for value in _routine_lookup_values(routine_key, routine_data):
+            if _normalise_lookup_text(value)["compact"] == wanted:
+                return routine_key
+
+    return None
+
+
+def find_routine_key(routines, routine_name):
+    wanted = _normalise_lookup_text(routine_name)["compact"]
+
+    if not wanted:
+        return None, "missing", []
+
+    exact_key = _find_exact_routine_key(routines, routine_name)
+
+    if exact_key:
+        return exact_key, "exact", []
+
+    scored = []
+
+    for routine_key, routine_data in routines.items():
+        score = max(
+            _routine_similarity(routine_name, value)
+            for value in _routine_lookup_values(routine_key, routine_data)
+        )
+
+        if score >= 0.64:
+            scored.append((score, routine_key))
+
+    scored.sort(reverse=True)
+
+    if not scored:
+        return None, "not_found", []
+
+    top_score, top_key = scored[0]
+    second_score = scored[1][0] if len(scored) > 1 else 0.0
+
+    if top_score >= 0.88 and top_score - second_score >= 0.06:
+        return top_key, "fuzzy", []
+
+    return None, "close_match", [routine_key for _, routine_key in scored[:3]]
 
 
 def normalise_trigger_phrases(routine_name, trigger_phrases):
@@ -167,18 +291,21 @@ def create_or_update_routine(routine_name, display_name=None, trigger_phrases=No
     if not routine_name or not routine_name.strip():
         return {
             "success": False,
-            "message": "No routine name was provided.",
+            "message": "What should I call the routine?",
         }
 
     routines = load_routines_file()
 
-    routine_key = make_routine_key(routine_name)
+    routine_key = _find_exact_routine_key(
+        routines,
+        display_name or routine_name,
+    ) or make_routine_key(routine_name)
     clean_steps = validate_steps(steps or [])
 
     if not clean_steps:
         return {
             "success": False,
-            "message": "I could not create the routine because no valid steps were provided.",
+            "message": "I need at least one valid step for that routine.",
         }
 
     display_name = display_name or routine_name.strip()
@@ -213,21 +340,31 @@ def list_routines():
     if not routines:
         return {
             "success": True,
-            "message": "No routines are saved yet.",
-            "spoken_message": "No routines are saved yet.",
+            "message": "No routines saved yet.",
+            "spoken_message": "No routines saved yet.",
             "routines": [],
         }
 
     routine_names = [
-        routine_data.get("display_name", routine_key)
+        _routine_display_name(routine_key, routine_data)
         for routine_key, routine_data in routines.items()
     ]
 
     return {
         "success": True,
         "message": "Saved routines: " + ", ".join(routine_names),
-        "spoken_message": f"You have {len(routine_names)} routines saved.",
-        "routines": routine_names,
+        "spoken_message": f"You've got {len(routine_names)} routines saved. I can read them or show them.",
+        "routines": [
+            {
+                "key": routine_key,
+                "display_name": _routine_display_name(routine_key, routine_data),
+                "trigger_phrases": routine_data.get("trigger_phrases", [])
+                if isinstance(routine_data, dict) else [],
+            }
+            for routine_key, routine_data in routines.items()
+        ],
+        "routine_names": routine_names,
+        "routine_count": len(routine_names),
     }
 
 
@@ -239,19 +376,34 @@ def delete_routine(routine_name):
     if not routine_name or not routine_name.strip():
         return {
             "success": False,
-            "message": "No routine name was provided.",
+            "message": "Which routine should I delete?",
         }
 
     routines = load_routines_file()
-    routine_key = make_routine_key(routine_name)
+    routine_key, match_type, candidates = find_routine_key(routines, routine_name)
 
-    if routine_key not in routines:
+    if not routine_key:
+        suggestions = [
+            _routine_display_name(candidate_key, routines[candidate_key])
+            for candidate_key in candidates
+            if candidate_key in routines
+        ]
+
+        if suggestions:
+            message = "Do you mean " + ", ".join(suggestions[:3]) + "?"
+        else:
+            message = f"I couldn't find a routine called {routine_name}."
+
         return {
             "success": False,
-            "message": f"I could not find a routine called {routine_name}.",
+            "message": message,
+            "spoken_message": message,
+            "needs_confirmation": bool(suggestions),
+            "suggestions": suggestions,
+            "match_type": match_type,
         }
 
-    display_name = routines[routine_key].get("display_name", routine_name)
+    display_name = _routine_display_name(routine_key, routines[routine_key])
     del routines[routine_key]
 
     save_result = save_routines_file(routines)
@@ -263,4 +415,57 @@ def delete_routine(routine_name):
         "success": True,
         "message": f"Deleted routine: {display_name}.",
         "spoken_message": f"Done. I deleted {display_name}.",
+        "routine_key": routine_key,
+        "match_type": match_type,
+    }
+
+
+def preview_delete_all_routines():
+    routines = load_routines_file()
+    routine_names = [
+        _routine_display_name(routine_key, routine_data)
+        for routine_key, routine_data in routines.items()
+    ]
+
+    return {
+        "routine_count": len(routine_names),
+        "routine_names": routine_names,
+    }
+
+
+def delete_all_routines(confirmed=False):
+    routines = load_routines_file()
+    routine_count = len(routines)
+
+    if routine_count == 0:
+        return {
+            "success": True,
+            "message": "No routines saved yet.",
+            "spoken_message": "No routines saved yet.",
+            "deleted_count": 0,
+        }
+
+    if not confirmed:
+        return {
+            "success": False,
+            "needs_confirmation": True,
+            "message": f"This will delete {routine_count} routines. Confirm?",
+            "spoken_message": f"This will delete {routine_count} routines. Confirm?",
+            "routine_count": routine_count,
+            "routine_names": [
+                _routine_display_name(routine_key, routine_data)
+                for routine_key, routine_data in routines.items()
+            ],
+        }
+
+    save_result = save_routines_file({})
+
+    if not save_result.get("success"):
+        return save_result
+
+    return {
+        "success": True,
+        "message": f"Deleted {routine_count} routines.",
+        "spoken_message": "Done. I deleted the routines.",
+        "deleted_count": routine_count,
     }

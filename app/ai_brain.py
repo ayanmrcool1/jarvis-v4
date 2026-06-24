@@ -9,7 +9,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from speech_style import humanise_jarvis_response
+from speech_style import humanise_jarvis_response, polish_spoken_response
 from tools.memory_tools import build_memory_context
 from tools.user_profile_tools import build_user_profile_context
 from tools.tool_registry import TOOL_DEFINITIONS, execute_tool_call
@@ -36,22 +36,26 @@ Core architecture:
 - Infer what the user wants from natural speech, context, and available tools.
 - Local routing only handles fast obvious shortcuts; you decide the real intent when tools are available.
 
-Personality:
-- Intelligent.
-- Concise.
-- Calm.
-- Direct.
-- Helpful.
-- Slightly friendly, like a capable personal butler.
-- Not overly chatty.
-- Not robotic.
+JARVIS personality and speaking style:
+- You are Jarvis, a local Windows desktop assistant.
+- Speak naturally, like a calm, capable, slightly witty human assistant.
+- Be concise and useful first.
+- Sound friendly without being overly cheerful.
+- Use contractions naturally: "I'm", "that's", "you're", "I'll", "can't", "couldn't".
+- Light dry humour is allowed occasionally for harmless actions or casual chat, but never force it.
+- Never be rude to the user, childish, goofy, theatrical, or dramatic.
+- Do not roleplay a sci-fi monologue or narrate internal systems.
+- Avoid stiff console/status wording and robotic formality.
+- Do not explain internal routing, tools, APIs, prompts, or implementation details unless the user asks.
+- Match the user's casual tone lightly while staying calm and helpful.
 - Your name is Jarvis. Do not spell it out as J-A-R-V-I-S.
 
 Current capabilities:
 - You can respond to the user's transcribed speech.
 - You can speak aloud through the configured TTS voice.
-- You can open apps/websites, search the web, search/play YouTube videos, run safe terminal commands, control volume, get system stats, and get date/time.
+- You can open and close apps/windows, open websites, search the web, search/play YouTube videos, run safe terminal commands, control volume, get system stats, and get date/time.
 - You can create, update, list, and delete routines.
+- You can create and list real scheduled reminders.
 - You can remember, list, and forget useful long-term information.
 - You can maintain a per-user runtime profile for lightweight personalisation.
 - You can inspect the screen, inspect browser pages, and act on visible screen content.
@@ -64,16 +68,19 @@ Current capabilities:
 Speed and speech rules:
 - Be extremely concise by default.
 - For casual conversation, reply in ONE short sentence only.
-- Do not add follow-up questions like “What do you need?”, “Anything else?”, or “How can I help?” unless the user clearly asks for options.
+- Do not add follow-up questions unless the user clearly asks for options or the next step is genuinely ambiguous.
 - Do not add filler after answering.
 - Use short spoken answers because this assistant speaks aloud.
 - Avoid multi-sentence responses unless the user asks for detail.
+- Prefer plain confirmations like "Done.", "Opening Chrome.", "I've got it.", "Sorted.", "On it.", "That's ready.", "Looks good.", or "I'm listening."
+- For harmless routine actions, a small dry aside is fine sometimes, but do not use humour on errors, risky actions, personal topics, or anything stressful.
 
 Action timing:
-- When using tools, acknowledge briefly first, then perform the action.
+- When using tools, acknowledge briefly first only when useful, then perform the action.
 - Do not overtalk while acting.
-- A short phrase like “On it.”, “I’ll check.”, or “Opening it now.” is enough.
+- A short phrase like "On it.", "I'll check.", or "Opening it now." is enough.
 - For successful simple actions, avoid repeating yourself after the tool finishes.
+- For risky or irreversible actions, keep confirmations explicit and sober. Do not weaken safety wording for deleting, sending, paying, changing settings, closing important apps, or submitting forms.
 
 AI-first tool behavior:
 - If the user asks you to do something on the computer, use the most relevant tool.
@@ -82,11 +89,15 @@ AI-first tool behavior:
 - Use fast_web_research for current, recent, online, price, recommendation, comparison, news, "best right now", "check out what the best is", "find me the best", "compare", or "which should I buy" requests when the user wants an answer and did not ask to open/show a browser.
 - Use search_web when the user explicitly wants a visible browser search, such as search Google, show me, pull up, open images/photos/pictures, or open a tab and search.
 - Use open_application when the user wants to open an app or known website.
-- Use close_current_browser_tab for “close this tab” or “close current tab”.
-- Use close_browser_tabs_matching for “close all YouTube tabs” or “close every Gmail tab”.
-- Use switch_browser_tab for “open tab two”, “go to tab 2”, or when speech transcribes tab as tap.
+- Use close_current_browser_tab for "close this tab" or "close current tab".
+- Use close_browser_tabs_matching for "close all YouTube tabs" or "close every Gmail tab".
+- Use close_application for "close Chrome", "close the browser", "close Notepad", or "close the whole Chrome window".
+- Do not use close_current_browser_tab for "close Chrome", "close the browser", or a named app/window.
+- If the user asks to close a browser app/window and it is unclear whether they mean a tab or the whole window, ask briefly.
+- Use switch_browser_tab for "open tab two", "go to tab 2", or when speech transcribes tab as tap.
 - If the user asks a visual question, opinion, comparison, reading, or asks what is visible on the screen, use analyse_screen or analyse_current_page.
 - Visual questions include "does this look good", "what do you think of this", "which one looks better", "can you read this", and "what am I looking at".
+- Screen intent is semantic, not phrase-based. If the user asks whether you can see the screen, what you can see, what this is, what is on screen, or asks you to look/read/analyse visible content, use analyse_screen.
 - Use act_on_screen only when the user wants a visible action performed, such as click, select, open, play, press, choose, or activate something on the screen.
 - Do not require exact action words. Infer whether the intent is visual understanding or visible interaction.
 - If the user wants you to physically do it, open it, play it, select it, go with it, choose one, or click something visible, call act_on_screen with allow_click=true.
@@ -95,11 +106,15 @@ AI-first tool behavior:
 - Use control_hud_widget when the user wants to show, hide, open, close, or clear Jarvis HUD panels/widgets.
 - If the user says "show", "display", "open", or "pull up" system stats/status, use control_hud_widget with widget_type system. If they ask "what is my CPU/RAM/system usage", use get_system_stats.
 - Use the to-do tools for Jarvis's built-in to-do list: create_todo_list, add_todo_task, list_todo_tasks, complete_todo_task, and remove_todo_task.
+- Use clear_all_todo_tasks for bulk to-do deletion. It requires confirmation. Never invent task names or call remove_todo_task repeatedly for a bulk clear.
 - Do not use act_on_screen to add, complete, remove, or create items in Jarvis's built-in to-do list.
+- Routines are reusable multi-step workflows. Reminders are scheduled notifications. Do not create routines for reminder requests.
+- Use create_reminder for one-time reminder requests, including "remind me in five minutes". Use list_reminders for "what reminders do I have". Do not list routines as reminders.
+- Use delete_all_routines for bulk routine deletion. It requires confirmation. Never guess routine names to perform a bulk delete.
 - If a tool fails, briefly say what failed.
 - Do not claim you opened, clicked, searched, analysed, or changed something unless a tool result confirms it.
 - If no available tool or current capability can complete the user's request, call log_capability_gap instead of only apologising.
-- If the user reports that Jarvis could not or cannot do something, use judgment and call log_capability_gap when it is a real capability gap.
+- If the user reports that Jarvis couldn't or can't do something, use judgment and call log_capability_gap when it is a real capability gap.
 - If the user asks what Jarvis cannot do, what has failed recently, or what needs improvement, call summarize_capability_gaps.
 - Do not log normal clarification needs, confirmation requests, safety refusals, empty/no-result states, or temporary context issues as capability gaps unless they reveal a missing capability.
 
@@ -110,24 +125,30 @@ Examples:
 - "Search Google for wireless headphones" -> search_web.
 - "Show me wireless headphones" -> search_web.
 - "Open pictures of wireless headphones" -> search_web.
-- “Close this tab” -> close_current_browser_tab.
-- “Close all YouTube tabs” -> close_browser_tabs_matching, match_text: youtube.
-- “Open tab two” -> switch_browser_tab, tab_number: 2.
-- “Play something from this page” -> act_on_screen, allow_click=true.
-- “Does this look good?” -> analyse_screen.
-- “What do you think of this on my screen?” -> analyse_screen.
-- “Which option looks better?” -> analyse_screen.
-- “Which food option should I pick?” -> analyse_screen.
-- “Choose one of these options” -> act_on_screen, allow_click=true.
-- “Click the best one” -> act_on_screen, allow_click=true.
-- “Read this error” -> analyse_screen.
-- “What website am I on?” -> get_current_browser_page.
+- "Close this tab" -> close_current_browser_tab.
+- "Close all YouTube tabs" -> close_browser_tabs_matching, match_text: youtube.
+- "Close Chrome" -> close_application, app_name: chrome, confirmed: false.
+- "Close the whole Chrome window" -> close_application, app_name: chrome, confirmed: true.
+- "Open tab two" -> switch_browser_tab, tab_number: 2.
+- "Play something from this page" -> act_on_screen, allow_click=true.
+- "Does this look good?" -> analyse_screen.
+- "What do you think of this on my screen?" -> analyse_screen.
+- "Which option looks better?" -> analyse_screen.
+- "Which food option should I pick?" -> analyse_screen.
+- "Choose one of these options" -> act_on_screen, allow_click=true.
+- "Click the best one" -> act_on_screen, allow_click=true.
+- "Read this error" -> analyse_screen.
+- "What website am I on?" -> get_current_browser_page.
 - "Show my to-do list" -> control_hud_widget, action: open, widget_type: todo.
 - "Show system stats" -> control_hud_widget, action: open, widget_type: system.
 - "What is my CPU usage?" -> get_system_stats.
 - "Create a new to-do list" -> create_todo_list.
 - "Add fix the bugs in drivers to my to-do list" -> add_todo_task, task_text: fix the bugs in drivers.
 - "Mark fix the bugs in drivers as done" -> complete_todo_task.
+- "Delete everything from my to-do list" -> clear_all_todo_tasks, confirmed: false.
+- "Remind me in five minutes" -> create_reminder, delay_minutes: 5.
+- "What reminders do I have?" -> list_reminders.
+- "Delete every routine" -> delete_all_routines, confirmed: false.
 - "Hide the chat" -> control_hud_widget, action: close, widget_type: chat.
 - "Close all widgets" -> control_hud_widget, action: close_all.
 
@@ -154,20 +175,25 @@ Runtime profile behavior:
 - The runtime profile guides your judgment, but it does not override the current request, safety, or common sense.
 - Prefer remember_user_profile_detail for durable personalisation such as response preferences, repeated corrections, vocabulary, workflows, project context, and Jarvis behavior guidance.
 - Use legacy memory tools for general long-term facts and notes that are not specifically user personalisation.
+- Use clear_all_memories only for bulk memory clearing, and only after confirmation.
+- Use reset_user_profile only for bulk profile resets, and only after confirmation.
 - Do not save temporary comments, one-off moods, or sensitive personal information unless the user clearly wants it remembered.
 - A new active user may have a blank profile; do not assume details from another user.
 
 Response style:
 - By default, reply in one short sentence unless the user asks for detail.
-- Avoid robotic labels like “preferences:”, “user_profile:”, or “tool result”.
-- Avoid overly formal phrases such as “How can I assist you today?”.
-- Good examples: “Of course.”, “Done.”, “Got it.”, “I’ve got you.”, “That’s handled.”
+- Avoid robotic labels like "preferences:", "user_profile:", or "tool result".
+- Do not sound like a console log, ticketing system, or startup banner.
+- When something fails, be honest and simple: "That didn't work.", "Looks like the file path is missing.", "Windows isn't giving me access to that.", or "I can't do that safely without checking first."
+- Good examples: "Done.", "Got it.", "I've got you.", "That's handled.", "Opening Chrome.", "I found it."
 - Stay smooth, concise, and useful.
 
 Memory behavior:
 - Use the runtime profile and saved memory when relevant.
 - Decide memory intent from meaning, not from exact words.
 - Recall questions like "do you remember what we discussed" are questions, not save-memory requests.
+- For "what do you remember about me" or similar recall questions, give a tight spoken summary of the most relevant 3 to 5 details, not a raw memory/profile dump.
+- If the user wants the full memory list, offer it briefly or use the list tools when they ask for it.
 - Save personalisation with remember_user_profile_detail when the user clearly wants a durable preference, repeated correction, vocabulary, workflow, project context, or Jarvis behavior rule stored for the future.
 - Save legacy memory with remember_memory for useful general long-term information such as saved websites, broad notes, or aliases that are not specifically active-user personalisation.
 - Do not save random temporary comments.
@@ -225,6 +251,7 @@ User said:
 
         direct_message_tools = [
             "open_application",
+            "close_application",
             "fast_web_research",
             "search_web",
             "search_youtube",
@@ -237,12 +264,17 @@ User said:
             "create_or_update_routine",
             "list_routines",
             "delete_routine",
+            "delete_all_routines",
+            "create_reminder",
+            "list_reminders",
             "remember_memory",
             "list_memories",
             "forget_memory",
+            "clear_all_memories",
             "remember_user_profile_detail",
             "list_user_profile",
             "forget_user_profile_detail",
+            "reset_user_profile",
             "analyse_screen",
             "take_screenshot",
             "get_active_window_info",
@@ -255,6 +287,7 @@ User said:
             "list_todo_tasks",
             "complete_todo_task",
             "remove_todo_task",
+            "clear_all_todo_tasks",
             "log_capability_gap",
             "summarize_capability_gaps",
         ]
@@ -288,7 +321,7 @@ User said:
                 return humanise_jarvis_response(text)
 
             return humanise_jarvis_response(
-                result.get("message", "I could not get system stats.")
+                result.get("message", "I couldn't get system stats.")
             )
 
         if tool_name == "get_current_datetime":
@@ -326,6 +359,9 @@ User said:
         if tool_name == "close_current_browser_tab":
             return "Closing it."
 
+        if tool_name == "close_application":
+            return None
+
         if tool_name == "close_browser_tabs_matching":
             match_text = str(arguments.get("match_text", "") or "").strip()
 
@@ -349,9 +385,9 @@ User said:
                 if "close" in clean_user_text and "tab" in clean_user_text:
                     return "Closing it."
                 if "video" in clean_user_text or "youtube" in clean_user_text:
-                    return "On it — choosing one now."
+                    return "On it. Choosing one now."
                 if "food" in clean_user_text or "order" in clean_user_text or "menu" in clean_user_text:
-                    return "I’ll take a look."
+                    return "I'll take a look."
                 return "On it."
 
             return "Let me take a look."
@@ -360,10 +396,10 @@ User said:
             return "I'll check the web."
 
         if tool_name == "analyse_screen":
-            return "I’ll check the screen."
+            return "I'll check the screen."
 
         if tool_name == "analyse_current_page":
-            return "I’ll check the page."
+            return "I'll check the page."
 
         if tool_name == "get_current_browser_page":
             return "Checking the page."
@@ -410,6 +446,33 @@ User said:
 
         return "On it."
 
+    def _should_speak_tool_progress(self, tool_name):
+        """
+        Keep debug progress out of spoken output for fast local actions.
+        """
+
+        quiet_progress_tools = {
+            "open_application",
+            "close_application",
+            "search_web",
+            "search_youtube",
+            "play_youtube_video",
+            "close_current_browser_tab",
+            "close_browser_tabs_matching",
+            "switch_browser_tab",
+            "control_hud_widget",
+            "create_todo_list",
+            "add_todo_task",
+            "complete_todo_task",
+            "remove_todo_task",
+            "clear_all_todo_tasks",
+            "create_reminder",
+            "list_reminders",
+            "delete_all_routines",
+        }
+
+        return tool_name not in quiet_progress_tools
+
     def _should_speak_before_tool(self, tool_name):
         pre_speech_tools = [
             "act_on_screen",
@@ -427,6 +490,7 @@ User said:
             "close_current_browser_tab",
             "close_browser_tabs_matching",
             "switch_browser_tab",
+            "close_application",
         ]
 
         return tool_name in pre_speech_tools
@@ -434,7 +498,7 @@ User said:
     def _should_suppress_final_response(self, tool_name, result, pre_tool_phrase):
         """
         Prevents double-speaking:
-        Example: 'Opening YouTube.' then 'Of course — opening YouTube.'
+        Example: 'Opening YouTube.' then another opening confirmation.
         """
 
         if not pre_tool_phrase:
@@ -484,6 +548,10 @@ User said:
                 message += "."
 
             print(f"[PROFILE] Tool progress event: {tool_name}: {message}")
+
+            if not self._should_speak_tool_progress(tool_name):
+                return
+
             progress_queue.put(message)
 
         def run_tool():
@@ -555,7 +623,9 @@ User said:
                 max_tokens=max_tokens,
             )
 
-            jarvis_response = response.choices[0].message.content.strip()
+            jarvis_response = polish_spoken_response(
+                response.choices[0].message.content.strip()
+            )
 
             self.messages.append(
                 {
@@ -567,7 +637,7 @@ User said:
             return jarvis_response
 
         except Exception as error:
-            return f"AI brain error: {error}"
+            return polish_spoken_response(f"AI brain error: {error}")
 
     def stream_ask(self, user_text, max_tokens=80):
         if not user_text.strip():
@@ -599,11 +669,12 @@ User said:
 
                 if delta and delta.content:
                     collected_text.append(delta.content)
-                    yield delta.content
 
             final_text = "".join(collected_text).strip()
 
             if final_text:
+                final_text = polish_spoken_response(final_text)
+
                 self.messages.append(
                     {
                         "role": "assistant",
@@ -611,8 +682,10 @@ User said:
                     }
                 )
 
+                yield final_text
+
         except Exception as error:
-            yield f"AI brain error: {error}"
+            yield polish_spoken_response(f"AI brain error: {error}")
 
     def ask_with_tools(self, user_text, max_tokens=120, forced_tool_name=None):
         if not user_text.strip():
@@ -655,16 +728,17 @@ User said:
                 final_text = assistant_message.content or ""
 
                 if final_text.strip():
+                    final_text = polish_spoken_response(final_text.strip())
                     self.messages.append(
                         {
                             "role": "assistant",
-                            "content": final_text.strip(),
+                            "content": final_text,
                         }
                     )
 
-                    return final_text.strip()
+                    return final_text
 
-                return "I understood, but I did not use a tool."
+                return polish_spoken_response("I understood, but I did not use a tool.")
 
             tool_results = []
 
@@ -725,7 +799,9 @@ User said:
                 max_tokens=max_tokens,
             )
 
-            final_text = final_response.choices[0].message.content.strip()
+            final_text = polish_spoken_response(
+                final_response.choices[0].message.content.strip()
+            )
 
             self.messages.append(
                 {
@@ -737,7 +813,7 @@ User said:
             return final_text
 
         except Exception as error:
-            return f"AI tool-calling error: {error}"
+            return polish_spoken_response(f"AI tool-calling error: {error}")
 
     def stream_ask_with_tools(self, user_text, max_tokens=150, forced_tool_name=None):
         if not user_text.strip():
@@ -783,7 +859,6 @@ User said:
 
                 if delta.content:
                     collected_text.append(delta.content)
-                    yield delta.content
 
                 if delta.tool_calls:
                     for tool_call_delta in delta.tool_calls:
@@ -817,14 +892,18 @@ User said:
                 final_text = "".join(collected_text).strip()
 
                 if final_text:
+                    final_text = polish_spoken_response(final_text)
                     self.messages.append(
                         {
                             "role": "assistant",
                             "content": final_text,
                         }
                     )
+                    yield final_text
                 else:
-                    fallback_text = "I heard you, but I’m not sure what to do with that."
+                    fallback_text = polish_spoken_response(
+                        "I heard you, but I'm not sure what to do with that."
+                    )
                     self.messages.append(
                         {
                             "role": "assistant",
@@ -859,7 +938,10 @@ User said:
                 )
 
                 if pre_tool_phrase and self._should_speak_before_tool(tool_name):
-                    spoken_phrase = pre_tool_phrase.strip()
+                    spoken_phrase = polish_spoken_response(
+                        pre_tool_phrase.strip(),
+                        max_chars=160,
+                    )
 
                     if spoken_phrase and not spoken_phrase.endswith((".", "!", "?")):
                         spoken_phrase += "."
@@ -927,7 +1009,7 @@ User said:
             working_messages.extend(tool_result_messages)
 
             if direct_responses:
-                final_text = " ".join(direct_responses).strip()
+                final_text = polish_spoken_response(" ".join(direct_responses).strip())
 
                 self.messages.append(
                     {
@@ -942,9 +1024,9 @@ User said:
                 return
 
             if suppressed_final_response:
-                final_text = " ".join(
+                final_text = polish_spoken_response(" ".join(
                     spoken_pre_tool_parts + spoken_progress_parts
-                ).strip() or "Done."
+                ).strip() or "Done.")
 
                 self.messages.append(
                     {
@@ -973,18 +1055,19 @@ User said:
 
                 if delta.content:
                     collected_final_text.append(delta.content)
-                    yield delta.content
 
             final_text = "".join(collected_final_text).strip()
 
             if final_text:
+                final_text = polish_spoken_response(final_text)
                 self.messages.append(
                     {
                         "role": "assistant",
                         "content": final_text,
                     }
                 )
+                yield final_text
 
         except Exception as error:
             print(f"AI tool stream error: {error}")
-            yield f"Something went wrong while using my tools: {error}"
+            yield polish_spoken_response(f"Something went wrong while using my tools: {error}")

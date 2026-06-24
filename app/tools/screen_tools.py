@@ -89,7 +89,7 @@ def take_screenshot(filename="latest_screen.png"):
     except Exception as error:
         return {
             "success": False,
-            "message": f"Failed to take screenshot: {error}",
+            "message": f"I couldn't take a screenshot: {error}",
         }
 
 
@@ -106,13 +106,13 @@ def get_active_window_info():
         if not active_window:
             return {
                 "success": True,
-                "message": "I could not detect an active window.",
+                "message": "I can't see an active window right now.",
                 "title": None,
             }
 
         return {
             "success": True,
-            "message": f"Active window: {active_window.title}",
+            "message": f"You're on {active_window.title}.",
             "title": active_window.title,
             "left": active_window.left,
             "top": active_window.top,
@@ -123,7 +123,7 @@ def get_active_window_info():
     except Exception as error:
         return {
             "success": False,
-            "message": f"Failed to get active window: {error}",
+            "message": f"I couldn't get the active window: {error}",
         }
 
 
@@ -280,7 +280,7 @@ Return ONLY valid JSON:
                 confidence = 0.0
 
             if not message:
-                message = visible_summary or "I can see the screen, but I cannot make out the key detail clearly."
+                message = visible_summary or "I can see the screen, but I can't make out the key detail clearly."
 
             return {
                 "success": True,
@@ -327,7 +327,7 @@ Return ONLY valid JSON:
     except Exception as error:
         return {
             "success": False,
-            "message": f"I could not analyse the screen: {error}",
+            "message": f"I couldn't analyse the screen: {error}",
             "path": image_path,
             "screenshot_path": image_path,
             "screenshot_mode": screenshot_result.get("screenshot_mode"),

@@ -1,5 +1,6 @@
 import os
 import difflib
+import random
 import re
 import shutil
 import subprocess
@@ -37,6 +38,8 @@ APP_ALIASES = {
 
     "calculator": "calculator",
     "calc": "calculator",
+    "paint": "paint",
+    "mspaint": "paint",
 
     "cmd": "command prompt",
     "command prompt": "command prompt",
@@ -85,6 +88,9 @@ APP_DISPLAY_NAMES = {
 
     "calculator": "Calculator",
     "calc": "Calculator",
+
+    "paint": "Paint",
+    "mspaint": "Paint",
 
     "vs code": "VS Code",
     "visual studio code": "VS Code",
@@ -145,6 +151,57 @@ SAFE_COMMAND_EXECUTABLES = {
         "display_name": "PowerShell",
         "commands": ["powershell.exe"],
     },
+    "paint": {
+        "display_name": "Paint",
+        "commands": ["mspaint.exe"],
+    },
+}
+
+SAFE_RANDOM_APP_NAMES = [
+    "notepad",
+    "calculator",
+    "paint",
+]
+
+RANDOM_APP_WORDS = {
+    "random",
+    "surprise",
+    "anything",
+    "something",
+    "whatever",
+}
+
+BROWSER_APP_NAMES = {
+    "browser",
+    "chrome",
+    "google chrome",
+    "edge",
+    "microsoft edge",
+    "firefox",
+    "brave",
+    "opera",
+    "opera gx",
+    "vivaldi",
+}
+
+CLOSE_PROCESS_NAMES = {
+    "chrome": {"chrome.exe"},
+    "google chrome": {"chrome.exe"},
+    "edge": {"msedge.exe"},
+    "microsoft edge": {"msedge.exe"},
+    "firefox": {"firefox.exe"},
+    "brave": {"brave.exe"},
+    "opera": {"opera.exe", "opera_gx.exe", "operagx.exe"},
+    "opera gx": {"opera_gx.exe", "operagx.exe"},
+    "vivaldi": {"vivaldi.exe"},
+    "notepad": {"notepad.exe"},
+    "calculator": {"calculator.exe", "calc.exe"},
+    "paint": {"mspaint.exe"},
+    "command prompt": {"cmd.exe"},
+    "powershell": {"powershell.exe"},
+    "visual studio code": {"code.exe"},
+    "discord": {"discord.exe"},
+    "spotify": {"spotify.exe"},
 }
 
 
@@ -176,6 +233,40 @@ def _normalise_lookup_text(text):
         "spaced": " ".join(words),
         "compact": "".join(words),
     }
+
+
+def _canonical_app_name(app_name):
+    clean_name = " ".join(str(app_name or "").lower().strip().split())
+
+    if clean_name in APP_ALIASES:
+        clean_name = APP_ALIASES[clean_name]
+
+    return clean_name
+
+
+def _display_app_name(app_name):
+    clean_name = _canonical_app_name(app_name)
+    return APP_DISPLAY_NAMES.get(clean_name, str(app_name or clean_name).strip().title())
+
+
+def _looks_like_safe_random_app_request(app_name):
+    lookup = _normalise_lookup_text(app_name)
+
+    if not lookup["words"].intersection(RANDOM_APP_WORDS):
+        return False
+
+    known_app_words = set()
+
+    for name in set(APP_ALIASES) | set(APP_DISPLAY_NAMES):
+        known_app_words.update(_normalise_lookup_text(name)["words"])
+
+    specific_words = lookup["words"] - RANDOM_APP_WORDS - {
+        "open",
+        "launch",
+        "start",
+    }
+
+    return not specific_words.intersection(known_app_words)
 
 
 def _app_match_score(query_name, candidate_name):
@@ -704,7 +795,7 @@ def open_application(app_name, progress_callback=None):
     if not app_name or not app_name.strip():
         return {
             "success": False,
-            "message": "No application name was provided.",
+            "message": "Which app should I open?",
         }
 
     progress = ToolProgress(progress_callback, tool_name="open_application")
@@ -713,6 +804,17 @@ def open_application(app_name, progress_callback=None):
     attempted_launch = {}
 
     try:
+        if _looks_like_safe_random_app_request(clean_name):
+            safe_choice = random.choice(SAFE_RANDOM_APP_NAMES)
+            result = open_application(safe_choice, progress_callback=progress_callback)
+            result["random_choice"] = safe_choice
+
+            if result.get("success"):
+                result["message"] = f"Opening {_display_app_name(safe_choice)}."
+                result["spoken_message"] = result["message"]
+
+            return result
+
         if clean_name in WEBSITE_ALIASES:
             launch_context = "website"
             url = WEBSITE_ALIASES[clean_name]
@@ -750,8 +852,7 @@ def open_application(app_name, progress_callback=None):
             return {
                 "success": False,
                 "message": (
-                    "Opening installed desktop apps is currently only supported on Windows. "
-                    "I can still open websites and URLs on this platform."
+                    "I can open websites here, but desktop app launching needs Windows."
                 ),
                 "platform": os.name,
             }
@@ -819,6 +920,166 @@ def open_application(app_name, progress_callback=None):
         }
 
 
+def _window_title_matches_app(title, clean_name, display_name):
+    title = str(title or "").lower()
+
+    if not title:
+        return False
+
+    candidates = {
+        clean_name,
+        display_name.lower(),
+    }
+
+    if clean_name == "chrome":
+        candidates.update({"google chrome", "chrome"})
+    elif clean_name == "microsoft edge":
+        candidates.update({"microsoft edge", "edge"})
+    elif clean_name == "visual studio code":
+        candidates.update({"visual studio code", "vs code", "code"})
+
+    return any(candidate and candidate in title for candidate in candidates)
+
+
+def _process_matches_app(process_name, clean_name):
+    process_name = str(process_name or "").lower()
+
+    if not process_name:
+        return False
+
+    expected = CLOSE_PROCESS_NAMES.get(clean_name, set())
+
+    if process_name in expected:
+        return True
+
+    lookup = _normalise_lookup_text(clean_name)
+    compact_process = _normalise_lookup_text(process_name.replace(".exe", ""))["compact"]
+
+    return bool(lookup["compact"] and lookup["compact"] in compact_process)
+
+
+def _foreground_process_name():
+    if not IS_WINDOWS:
+        return ""
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        hwnd = user32.GetForegroundWindow()
+
+        if not hwnd:
+            return ""
+
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+
+        return psutil.Process(pid.value).name().lower()
+    except Exception:
+        return ""
+
+
+def close_application(app_name, confirmed=False):
+    """
+    Close an app/window by name.
+    Browser targets ask for confirmation unless the user clearly said whole window/app.
+    """
+
+    if not app_name or not str(app_name).strip():
+        return {
+            "success": False,
+            "message": "Which app should I close?",
+        }
+
+    clean_name = _canonical_app_name(app_name)
+    display_name = _display_app_name(app_name)
+    confirmed = bool(confirmed)
+
+    if clean_name in BROWSER_APP_NAMES and not confirmed:
+        return {
+            "success": False,
+            "needs_confirmation": True,
+            "message": f"Do you mean the whole {display_name} window, or just a tab?",
+            "spoken_message": f"Do you mean the whole {display_name} window, or just a tab?",
+            "app_name": clean_name,
+        }
+
+    if not IS_WINDOWS:
+        return {
+            "success": False,
+            "message": "Closing desktop apps is currently only supported on Windows.",
+            "platform": os.name,
+        }
+
+    try:
+        import pygetwindow as gw
+
+        active_window = gw.getActiveWindow()
+        active_process = _foreground_process_name()
+
+        if active_window:
+            active_title = getattr(active_window, "title", "")
+
+            if (
+                _window_title_matches_app(active_title, clean_name, display_name)
+                or _process_matches_app(active_process, clean_name)
+            ):
+                active_window.close()
+                return {
+                    "success": True,
+                    "message": f"Closed {display_name}.",
+                    "spoken_message": f"Closed {display_name}.",
+                    "app_name": clean_name,
+                    "window_title": active_title,
+                }
+
+        matching_windows = []
+
+        for window in gw.getAllWindows():
+            title = getattr(window, "title", "")
+
+            if _window_title_matches_app(title, clean_name, display_name):
+                matching_windows.append(window)
+
+        if len(matching_windows) == 1:
+            window = matching_windows[0]
+            title = getattr(window, "title", "")
+            window.close()
+
+            return {
+                "success": True,
+                "message": f"Closed {display_name}.",
+                "spoken_message": f"Closed {display_name}.",
+                "app_name": clean_name,
+                "window_title": title,
+            }
+
+        if len(matching_windows) > 1:
+            return {
+                "success": False,
+                "needs_confirmation": True,
+                "message": f"I found multiple {display_name} windows. Which one should I close?",
+                "spoken_message": f"I found multiple {display_name} windows. Which one should I close?",
+                "app_name": clean_name,
+                "matches": [getattr(window, "title", "") for window in matching_windows[:5]],
+            }
+
+        return {
+            "success": False,
+            "message": f"I couldn't find a {display_name} window to close.",
+            "app_name": clean_name,
+        }
+
+    except Exception as error:
+        return {
+            "success": False,
+            "message": f"I couldn't close {display_name}: {error}",
+            "error": str(error),
+            "app_name": clean_name,
+        }
+
+
 def search_web(query):
     """
     Open a web search in the default browser.
@@ -828,7 +1089,7 @@ def search_web(query):
     if not query:
         return {
             "success": False,
-            "message": "No search query was provided.",
+            "message": "What should I search?",
         }
 
     encoded_query = quote_plus(query)
@@ -846,7 +1107,7 @@ def search_web(query):
     except Exception as error:
         return {
             "success": False,
-            "message": f"Failed to search the web: {error}",
+            "message": f"I couldn't search the web: {error}",
         }
 
 
@@ -930,7 +1191,7 @@ def run_terminal_command(command, timeout_seconds=10):
     if not command or not command.strip():
         return {
             "success": False,
-            "message": "No command was provided.",
+            "message": "What command should I run?",
         }
 
     try:
@@ -950,7 +1211,7 @@ def run_terminal_command(command, timeout_seconds=10):
             "return_code": result.returncode,
             "stdout": output,
             "stderr": error,
-            "message": output or error or "Command completed.",
+            "message": output or error or "Done.",
         }
 
     except subprocess.TimeoutExpired:
@@ -962,7 +1223,7 @@ def run_terminal_command(command, timeout_seconds=10):
     except Exception as error:
         return {
             "success": False,
-            "message": f"Failed to run command: {error}",
+            "message": f"I couldn't run that command: {error}",
         }
 
 
@@ -985,7 +1246,7 @@ def get_system_stats():
     except Exception as error:
         return {
             "success": False,
-            "message": f"Failed to get system stats: {error}",
+            "message": f"I couldn't get system stats: {error}",
         }
 
 
@@ -1059,11 +1320,11 @@ def set_volume(action):
 
         return {
             "success": False,
-            "message": "Unsupported volume action. Use up, down, mute, or unmute.",
+            "message": "I can set volume up, down, mute, or unmute.",
         }
 
     except Exception as error:
         return {
             "success": False,
-            "message": f"Failed to control volume: {error}",
+            "message": f"I couldn't control volume: {error}",
         }

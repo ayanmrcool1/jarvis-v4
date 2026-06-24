@@ -271,7 +271,7 @@ def save_user_profile(profile):
     except Exception as error:
         return {
             "success": False,
-            "message": f"Failed to save user profile: {error}",
+            "message": f"I couldn't save the user profile: {error}",
         }
 
 
@@ -291,7 +291,7 @@ def remember_user_profile_detail(
     if not content:
         return {
             "success": False,
-            "message": "No profile detail was provided.",
+            "message": "What should I save in your profile?",
         }
 
     profile = load_user_profile()
@@ -367,6 +367,70 @@ def list_user_profile(category=None):
     }
 
 
+def preview_reset_user_profile(category=None):
+    profile = load_user_profile()
+    categories = [_normalise_category(category)] if category else VALID_PROFILE_CATEGORIES
+    detail_count = sum(
+        len(profile.get(category_name, []))
+        for category_name in categories
+    )
+
+    return {
+        "detail_count": detail_count,
+        "categories": categories,
+        "user_id": profile.get("user_id"),
+    }
+
+
+def reset_user_profile(confirmed=False, category=None):
+    profile = load_user_profile()
+    categories = [_normalise_category(category)] if category else VALID_PROFILE_CATEGORIES
+    detail_count = sum(
+        len(profile.get(category_name, []))
+        for category_name in categories
+    )
+
+    if detail_count == 0:
+        return {
+            "success": True,
+            "message": "This profile is already blank.",
+            "spoken_message": "This profile is already blank.",
+            "deleted_count": 0,
+            "user_id": profile.get("user_id"),
+        }
+
+    if not confirmed:
+        return {
+            "success": False,
+            "needs_confirmation": True,
+            "message": f"This will delete {detail_count} profile details. Confirm?",
+            "spoken_message": f"This will delete {detail_count} profile details. Confirm?",
+            "detail_count": detail_count,
+            "categories": categories,
+            "user_id": profile.get("user_id"),
+        }
+
+    if category:
+        for category_name in categories:
+            profile[category_name] = []
+    else:
+        profile = _default_profile(profile.get("user_id"))
+
+    save_result = save_user_profile(profile)
+
+    if not save_result.get("success"):
+        return save_result
+
+    return {
+        "success": True,
+        "message": f"Deleted {detail_count} profile details.",
+        "spoken_message": "Done. I reset the profile details.",
+        "deleted_count": detail_count,
+        "categories": categories,
+        "user_id": profile.get("user_id"),
+    }
+
+
 def forget_user_profile_detail(query, category=None):
     """
     Deletes active-user profile details matching a query.
@@ -377,7 +441,7 @@ def forget_user_profile_detail(query, category=None):
     if not clean_query:
         return {
             "success": False,
-            "message": "No profile detail query was provided.",
+            "message": "What profile detail should I remove?",
         }
 
     profile = load_user_profile()
@@ -405,7 +469,7 @@ def forget_user_profile_detail(query, category=None):
     if not removed:
         return {
             "success": False,
-            "message": f"I could not find a profile detail matching: {query}",
+            "message": f"I couldn't find a profile detail matching: {query}",
             "spoken_message": "I couldn't find that in your profile.",
             "user_id": profile.get("user_id"),
         }

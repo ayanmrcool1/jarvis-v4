@@ -92,7 +92,7 @@ def handle_system_command(transcription, clean_text):
         if not stats.get("success"):
             return {
                 "handled": True,
-                "response": stats.get("message", "I could not get system stats."),
+                "response": stats.get("message", "I couldn't get system stats."),
                 "source": "system_skill",
             }
 

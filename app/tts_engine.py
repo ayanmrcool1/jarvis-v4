@@ -14,6 +14,7 @@ import edge_tts
 import pygame
 import requests
 from dotenv import load_dotenv
+from speech_style import polish_spoken_response
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -562,6 +563,11 @@ class JarvisTTS:
         if not text or not text.strip():
             return
 
+        text = polish_spoken_response(text)
+
+        if not text:
+            return
+
         if self._speak_with_elevenlabs(text):
             return
 
@@ -621,7 +627,7 @@ class JarvisTTS:
             # Prefer punctuation phrase boundaries.
             for pattern in [
                 r"^(.{45,110}?[,;:])\s+",
-                r"^(.{45,110}?[–—-])\s+",
+                r"^(.{45,110}?[-])\s+",
             ]:
                 phrase_match = re.match(pattern, buffer, flags=re.DOTALL)
                 if phrase_match:

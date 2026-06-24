@@ -34,7 +34,7 @@ def play_audio(path):
 
 
 async def main():
-    text = "Good evening, sir. Edge voice systems are now online."
+    text = "Voice test is working."
 
     output_path = Path(tempfile.gettempdir()) / "jarvis_edge_test.mp3"
 

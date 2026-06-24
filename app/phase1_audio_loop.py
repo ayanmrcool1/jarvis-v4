@@ -1,4 +1,5 @@
 import os
+import sys
 import queue
 import threading
 import time
@@ -18,9 +19,10 @@ from faster_whisper import WhisperModel
 from ai_brain import JarvisBrain
 from keybind_listener import GlobalHotkeyListener
 from tts_engine import JarvisTTS
-from speech_style import humanise_jarvis_response
+from speech_style import polish_spoken_response
 from router import JarvisRouter
 from ui_state import write_ui_state, append_chat_message
+from tools.reminder_tools import pop_due_reminders
 
 # =========================
 # JARVIS PHASE 1 SETTINGS
@@ -29,6 +31,15 @@ from ui_state import write_ui_state, append_chat_message
 BASE_DIR = Path(__file__).resolve().parent.parent
 ENV_PATH = BASE_DIR / ".env"
 load_dotenv(ENV_PATH)
+
+
+def configure_console_encoding():
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if hasattr(stream, "reconfigure"):
+                stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 
 def get_env_float(name, default):
@@ -74,7 +85,15 @@ SPEECH_END_RMS = 320.0
 SILENCE_SECONDS_TO_STOP = 0.4
 MAX_COMMAND_SECONDS = 10.0
 MIN_COMMAND_SECONDS = 0.3
-PRE_ROLL_SECONDS = 1.5
+PRE_ROLL_SECONDS = get_env_float(
+    "JARVIS_RECORDING_PRE_ROLL_SECONDS",
+    1.5,
+)
+WHISPER_SPEECH_PAD_MS = get_env_int(
+    "JARVIS_WHISPER_SPEECH_PAD_MS",
+    350,
+    minimum=0,
+)
 WAKE_SPEECH_START_TIMEOUT_SECONDS = get_env_float(
     "JARVIS_WAKE_SPEECH_START_TIMEOUT_SECONDS",
     6.0,
@@ -168,6 +187,39 @@ def add_chat_message(role, text):
         append_chat_message(role, text)
     except Exception as error:
         print(f"HUD chat warning: {error}")
+
+
+def start_reminder_monitor(tts, interval_seconds=10):
+    """
+    Speaks due reminders from the local reminder store.
+    """
+
+    def worker():
+        while True:
+            try:
+                due_reminders = pop_due_reminders()
+            except Exception as error:
+                print(f"Reminder monitor warning: {error}")
+                due_reminders = []
+
+            for reminder in due_reminders:
+                text = str(reminder.get("text") or "Reminder").strip() or "Reminder"
+                message = polish_spoken_response(f"Reminder: {text}")
+                print(f"Due reminder: {message}")
+                set_ui_state("SPEAKING", "Reminder", message[:120])
+                add_chat_message("jarvis", message)
+
+                try:
+                    tts.speak(message)
+                except Exception as error:
+                    print(f"Reminder TTS warning: {error}")
+
+            time.sleep(interval_seconds)
+
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+
+    return thread
 
 
 # =========================
@@ -394,7 +446,7 @@ def transcribe_audio(whisper_model, wav_path, rms):
         vad_parameters={
             "threshold": 0.5,
             "min_silence_duration_ms": 250,
-            "speech_pad_ms": 100,
+            "speech_pad_ms": WHISPER_SPEECH_PAD_MS,
         },
         condition_on_previous_text=False
     )
@@ -496,7 +548,7 @@ def route_and_speak(transcription, router, tts):
 
     else:
         raw_response = route_result.get("response", "Done.")
-        jarvis_response = humanise_jarvis_response(raw_response)
+        jarvis_response = polish_spoken_response(raw_response)
 
         print(jarvis_response)
 
@@ -514,6 +566,11 @@ def response_invites_follow_up(response, router):
     pending_intents = getattr(router, "pending_intents", None)
 
     if pending_intents and pending_intents.has_pending():
+        return True
+
+    pending_confirmations = getattr(router, "pending_confirmations", None)
+
+    if pending_confirmations and pending_confirmations.has_pending():
         return True
 
     clean_response = str(response or "").strip()
@@ -699,10 +756,12 @@ def consume_hotkey_trigger(trigger_queue):
 # =========================
 
 def main():
+    configure_console_encoding()
+
     print("\nStarting JARVIS Phase 1/2/3...")
     print("Press Ctrl + C to stop completely.\n")
 
-    set_ui_state("BOOTING", "Starting J.A.R.V.I.S", "Initialising local systems")
+    set_ui_state("BOOTING", "Starting Jarvis", "Loading local systems")
 
     print_devices()
 
@@ -719,6 +778,7 @@ def main():
 
     set_ui_state("BOOTING", "Loading voice engine", "Preparing Kokoro TTS")
     tts = JarvisTTS(voice="en-GB-ThomasNeural", speed=1.05)
+    start_reminder_monitor(tts)
 
     set_ui_state("BOOTING", "Loading router", "Preparing local tools and AI tool brain")
     router = JarvisRouter(brain)
@@ -776,7 +836,7 @@ def main():
     ) as stream:
 
         print("JARVIS is in sleep mode.")
-        set_ui_state("STANDBY", "Awaiting wake phrase or keybind", standby_detail)
+        set_ui_state("STANDBY", "Listening for wake phrase or keybind", standby_detail)
         print(f"Say: Hey Jarvis or press {hotkey_label}\n")
 
         while True:
@@ -809,7 +869,7 @@ def main():
                 print("JARVIS is back in sleep mode.")
                 set_ui_state(
                     "STANDBY",
-                    "Awaiting wake phrase or keybind",
+                    "Listening for wake phrase or keybind",
                     standby_detail,
                 )
                 print(f"Say: Hey Jarvis or press {hotkey_label}\n")
@@ -852,7 +912,7 @@ def main():
                 print("JARVIS is back in sleep mode.")
                 set_ui_state(
                     "STANDBY",
-                    "Awaiting wake phrase or keybind",
+                    "Listening for wake phrase or keybind",
                     standby_detail,
                 )
                 print(f"Say: Hey Jarvis or press {hotkey_label}\n")

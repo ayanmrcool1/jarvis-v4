@@ -6,4 +6,4 @@ tts = JarvisTTS(
     speed=1.0
 )
 
-tts.speak("Good evening. Jarvis voice output is now online.")
+tts.speak("Voice test is working.")

@@ -180,6 +180,6 @@ def handle_app_command(transcription, clean_text):
         "handled": False,
         "needs_ai": True,
         "forced_tool_name": "open_application",
-        "response": result.get("message", f"I could not open {app_name} locally."),
+        "response": result.get("message", f"I couldn't open {app_name} locally."),
         "source": "app_skill",
     }

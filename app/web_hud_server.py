@@ -1,6 +1,7 @@
 import argparse
 import json
 import mimetypes
+import os
 import shutil
 import socket
 import subprocess
@@ -35,9 +36,80 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 
 try:
+    from dotenv import load_dotenv
+except Exception:
+    load_dotenv = None
+
+if load_dotenv:
+    load_dotenv(BASE_DIR / ".env")
+
+try:
     import psutil
 except Exception:
     psutil = None
+
+TRUE_ENV_VALUES = {"1", "true", "yes", "on"}
+ACCESS_LOG_ENV_NAMES = ("JARVIS_WEB_HUD_ACCESS_LOGS", "WEB_HUD_VERBOSE_HTTP")
+VERBOSE_HTTP_ACCESS_LOGS = any(
+    str(os.getenv(name, "")).strip().lower() in TRUE_ENV_VALUES
+    for name in ACCESS_LOG_ENV_NAMES
+)
+QUIET_SUCCESS_PATHS = {
+    "/",
+    "/index.html",
+    "/api/state",
+    "/styles.css",
+    "/app.js",
+    "/favicon.ico",
+}
+QUIET_STATIC_SUFFIXES = {
+    ".css",
+    ".gif",
+    ".ico",
+    ".jpeg",
+    ".jpg",
+    ".js",
+    ".map",
+    ".png",
+    ".svg",
+    ".ttf",
+    ".webp",
+    ".woff",
+    ".woff2",
+}
+TINY_FAVICON_PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d4948445200000001000000010806000000"
+    "1f15c4890000000a49444154789c63600000020001e221bc3300000000"
+    "49454e44ae426082"
+)
+
+
+def _status_code_int(code):
+    try:
+        return int(code)
+    except (TypeError, ValueError):
+        return None
+
+
+def _should_log_request(method, raw_path, status_code):
+    if VERBOSE_HTTP_ACCESS_LOGS:
+        return True
+
+    if status_code is None or status_code >= HTTPStatus.BAD_REQUEST:
+        return True
+
+    if str(method).upper() not in {"GET", "HEAD"}:
+        return True
+
+    parsed_path = urlparse(raw_path).path
+
+    if parsed_path in QUIET_SUCCESS_PATHS:
+        return False
+
+    if Path(parsed_path).suffix.lower() in QUIET_STATIC_SUFFIXES:
+        return False
+
+    return True
 
 
 def _safe_read_json(path, fallback):
@@ -200,8 +272,16 @@ def _open_browser(url):
 class WebHudRequestHandler(BaseHTTPRequestHandler):
     server_version = "JarvisWebHud/1.0"
 
+    def log_request(self, code="-", size="-"):
+        status_code = _status_code_int(code)
+
+        if not _should_log_request(self.command, self.path, status_code):
+            return
+
+        self.log_message('"%s" %s %s', self.requestline, str(code), str(size))
+
     def log_message(self, format, *args):
-        print(f"[WEB HUD] {self.address_string()} - {format % args}")
+        print(f"[WEB HUD] {self.address_string()} - {format % args}", flush=True)
 
     def _send_bytes(self, data, content_type="application/octet-stream", status=HTTPStatus.OK):
         self.send_response(status)
@@ -273,6 +353,10 @@ class WebHudRequestHandler(BaseHTTPRequestHandler):
                     "capability_gaps": _load_capability_gaps(limit=limit),
                 }
             )
+            return
+
+        if parsed.path == "/favicon.ico":
+            self._send_bytes(TINY_FAVICON_PNG, content_type="image/png")
             return
 
         static_path = self._static_path_for(self.path)

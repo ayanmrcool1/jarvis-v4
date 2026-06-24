@@ -592,7 +592,7 @@ class JarvisHUD(QWidget):
         self.frame_delta = 0.02
         self.last_tick_time = time.perf_counter()
         self.status = "STANDBY"
-        self.sub_status = "Awaiting wake phrase"
+        self.sub_status = "Listening for wake phrase"
         self.detail = ""
 
         self.wave_values = [random.random() for _ in range(72)]
@@ -762,7 +762,7 @@ class JarvisHUD(QWidget):
         state = read_ui_state()
 
         self.status = state.get("status", "STANDBY")
-        self.sub_status = state.get("sub_status", "Awaiting wake phrase")
+        self.sub_status = state.get("sub_status", "Listening for wake phrase")
         self.detail = state.get("detail", "")
         active_widgets = state.get("active_widgets", [])
         requested_orb_position = state.get("orb_position", "center")
@@ -1132,9 +1132,9 @@ class JarvisHUD(QWidget):
         top = h / 2 - panel_h / 2
 
         left_rows = [
-            "VOICE LINK       ONLINE",
-            "MEMORY STACK     READY",
-            "VISION LAYER     READY",
+            "VOICE LINK       ACTIVE",
+            "MEMORY           READY",
+            "VISION           READY",
             "ROUTER MODE      HYBRID",
             "LOCAL TOOLS      STABLE",
         ]

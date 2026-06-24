@@ -75,8 +75,8 @@ def control_hud_widget(action, widget_type=None):
         close_all_widgets()
         return {
             "success": True,
-            "message": "Closed the HUD widgets.",
-            "spoken_message": "Closed the HUD widgets.",
+            "message": "Widgets closed.",
+            "spoken_message": "Widgets closed.",
             "action": action,
         }
 
@@ -92,8 +92,8 @@ def control_hud_widget(action, widget_type=None):
     if widget_type not in WIDGET_CONFIG:
         return {
             "success": False,
-            "message": "I do not have that HUD widget yet.",
-            "spoken_message": "I do not have that HUD widget yet.",
+            "message": "I don't have that HUD widget yet.",
+            "spoken_message": "I don't have that HUD widget yet.",
             "action": action,
             "widget_type": widget_type,
             "available_widgets": sorted(WIDGET_CONFIG.keys()),

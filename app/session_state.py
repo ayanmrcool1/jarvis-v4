@@ -18,13 +18,129 @@ PLACEHOLDER_WORDS = {
 
 CANCEL_WORDS = {
     "cancel",
+    "cancel that",
     "never mind",
     "nevermind",
     "forget it",
+    "forget that",
     "dont worry",
     "don't worry",
     "leave it",
+    "leave it for now",
+    "ignore that",
+    "scratch that",
+    "stop that",
+    "not that",
 }
+
+CONFIRM_WORDS = {
+    "yes",
+    "yeah",
+    "yep",
+    "confirm",
+    "confirmed",
+    "do it",
+    "go ahead",
+    "proceed",
+    "sure",
+    "thats fine",
+    "that's fine",
+    "please do",
+}
+
+DENY_WORDS = {
+    "no",
+    "nope",
+    "dont",
+    "don't",
+    "dont do it",
+    "don't do it",
+    "leave it",
+    "stop",
+}
+
+
+class PendingConfirmationManager:
+    def __init__(self, expires_after_turns=2, expires_after_seconds=90):
+        self.pending = None
+        self.expires_after_turns = expires_after_turns
+        self.expires_after_seconds = expires_after_seconds
+
+    def clear(self):
+        self.pending = None
+
+    def has_pending(self):
+        return self.pending is not None and not self._is_expired()
+
+    def create(self, action_type, tool_name, arguments, prompt, description=""):
+        self.pending = {
+            "action_type": action_type,
+            "tool_name": tool_name,
+            "arguments": dict(arguments or {}),
+            "prompt": prompt,
+            "description": description,
+            "created_at": time.time(),
+            "turns_waited": 0,
+        }
+
+        return self.pending
+
+    def resolve_with(self, transcription, clean_text):
+        if not self.pending:
+            return None
+
+        if self._is_expired():
+            self.clear()
+            return None
+
+        if _is_cancel(clean_text) or _is_denial(clean_text):
+            self.clear()
+            return {
+                "status": "cancelled",
+                "message": "No problem. I left it alone.",
+            }
+
+        if (
+            self.pending.get("action_type") == "close_application"
+            and "tab" in _normalise(clean_text).split()
+        ):
+            self.clear()
+            return {
+                "status": "confirmed",
+                "tool_name": "close_current_browser_tab",
+                "arguments": {},
+            }
+
+        if _is_confirmation(clean_text):
+            pending = self.pending
+            self.clear()
+
+            return {
+                "status": "confirmed",
+                "pending": pending,
+                "tool_name": pending.get("tool_name"),
+                "arguments": pending.get("arguments", {}),
+            }
+
+        if _looks_like_new_full_command(clean_text):
+            self.clear()
+            return None
+
+        self.pending["turns_waited"] = int(self.pending.get("turns_waited", 0)) + 1
+
+        return {
+            "status": "still_pending",
+            "message": self.pending.get("prompt", "Please confirm first."),
+        }
+
+    def _is_expired(self):
+        if not self.pending:
+            return True
+
+        age = time.time() - self.pending.get("created_at", 0)
+        turns = int(self.pending.get("turns_waited", 0))
+
+        return age > self.expires_after_seconds or turns > self.expires_after_turns
 
 
 class PendingIntentManager:
@@ -142,7 +258,30 @@ def _normalise(text):
 
 
 def _is_cancel(clean_text):
-    return _normalise(clean_text) in CANCEL_WORDS
+    clean = _normalise(clean_text)
+
+    if clean in CANCEL_WORDS:
+        return True
+
+    return any(f" {phrase} " in f" {clean} " for phrase in CANCEL_WORDS)
+
+
+def _is_confirmation(clean_text):
+    clean = _normalise(clean_text)
+
+    if clean in CONFIRM_WORDS:
+        return True
+
+    return any(f" {phrase} " in f" {clean} " for phrase in CONFIRM_WORDS)
+
+
+def _is_denial(clean_text):
+    clean = _normalise(clean_text)
+
+    if clean in DENY_WORDS:
+        return True
+
+    return any(f" {phrase} " in f" {clean} " for phrase in DENY_WORDS)
 
 
 def _is_placeholder_text(text):

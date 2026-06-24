@@ -23,6 +23,7 @@ from tools.screen_action_tools import act_on_screen
 from tools.system_tools import (
     get_current_datetime,
     open_application,
+    close_application,
     search_web,
     run_terminal_command,
     get_system_stats,
@@ -38,18 +39,26 @@ from tools.routine_tools import (
     create_or_update_routine,
     list_routines,
     delete_routine,
+    delete_all_routines,
+)
+
+from tools.reminder_tools import (
+    create_reminder,
+    list_reminders,
 )
 
 from tools.memory_tools import (
     remember_memory,
     list_memories,
     forget_memory,
+    clear_all_memories,
 )
 
 from tools.user_profile_tools import (
     remember_user_profile_detail,
     list_user_profile,
     forget_user_profile_detail,
+    reset_user_profile,
 )
 
 from tools.web_research_tools import fast_web_research
@@ -62,6 +71,7 @@ from tools.todo_tools import (
     list_todo_tasks,
     complete_todo_task,
     remove_todo_task,
+    clear_all_todo_tasks,
 )
 
 from tools.capability_gap_tools import (
@@ -89,7 +99,7 @@ TOOL_DEFINITIONS = [
             "description": (
                 "Record a genuine Jarvis capability gap when the user request cannot be completed because no "
                 "appropriate current tool exists, a requested capability is missing, or the user reports that "
-                "Jarvis could not do something. Do not use this for ordinary clarifying questions, confirmation "
+                "Jarvis couldn't do something. Do not use this for ordinary clarifying questions, confirmation "
                 "requests, safety blocks, or normal no-result situations."
             ),
             "parameters": {
@@ -105,7 +115,7 @@ TOOL_DEFINITIONS = [
                     },
                     "failure_reason": {
                         "type": "string",
-                        "description": "Why Jarvis could not complete it.",
+                        "description": "Why Jarvis couldn't complete it.",
                     },
                     "category": {
                         "type": "string",
@@ -192,6 +202,8 @@ TOOL_DEFINITIONS = [
             "description": (
                 "Close the active browser tab using Ctrl+W. Use this for requests like "
                 "'close this tab', 'close the current tab', or 'shut this tab'. "
+                "Do not use this for named app/window requests like 'close Chrome' or 'close the browser'; "
+                "use close_application for those. "
                 "This is better than act_on_screen for tab closing."
             ),
             "parameters": {
@@ -207,7 +219,8 @@ TOOL_DEFINITIONS = [
             "name": "close_browser_tabs_matching",
             "description": (
                 "Close browser tabs matching a website or text, such as YouTube, Gmail, Google, or TradingView. "
-                "Use this for requests like 'close all YouTube tabs' or 'close every Gmail tab'."
+                "Use this for requests like 'close all YouTube tabs' or 'close every Gmail tab'. "
+                "Do not use this for closing the browser app/window itself."
             ),
             "parameters": {
                 "type": "object",
@@ -647,6 +660,36 @@ TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "clear_all_todo_tasks",
+            "description": (
+                "Clear Jarvis's built-in to-do list as a bulk operation. This is destructive and requires "
+                "confirmation. If the user asks to delete, clear, remove, or wipe every/all to-do task, use "
+                "this tool with confirmed false unless a pending confirmation has already been resolved. "
+                "Never satisfy a bulk delete by guessing task names and calling remove_todo_task repeatedly."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "confirmed": {
+                        "type": "boolean",
+                        "description": "True only after the user confirms this exact bulk deletion.",
+                    },
+                    "include_completed": {
+                        "type": "boolean",
+                        "description": "Whether completed tasks should also be deleted. Default true.",
+                    },
+                    "open_widget": {
+                        "type": "boolean",
+                        "description": "Whether to show/update the to-do widget after clearing. Default true.",
+                    },
+                },
+                "additionalProperties": False,
+            },
+        },
+    },
 
     # =========================
     # SYSTEM TOOLS
@@ -679,6 +722,33 @@ TOOL_DEFINITIONS = [
                         "type": "string",
                         "description": "The name of the app or website to open.",
                     }
+                },
+                "required": ["app_name"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "close_application",
+            "description": (
+                "Close a named desktop app or app window. Use this for requests like close Chrome, close Notepad, "
+                "close the browser, or close the whole Chrome window. Do not use browser tab tools for app/window "
+                "close requests. For browser targets, set confirmed true only when the user clearly says whole "
+                "window, entire browser, app, or confirms after being asked."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "app_name": {
+                        "type": "string",
+                        "description": "The app/window name to close, such as Chrome, Edge, browser, Notepad, or VS Code.",
+                    },
+                    "confirmed": {
+                        "type": "boolean",
+                        "description": "True only when the user clearly wants the whole app/window closed.",
+                    },
                 },
                 "required": ["app_name"],
                 "additionalProperties": False,
@@ -765,6 +835,63 @@ TOOL_DEFINITIONS = [
     },
 
     # =========================
+    # REMINDER TOOLS
+    # =========================
+    {
+        "type": "function",
+        "function": {
+            "name": "create_reminder",
+            "description": (
+                "Create a real scheduled reminder in Jarvis's reminder store. Use this for one-time reminder "
+                "requests such as remind me in five minutes, remind me tomorrow, or remind me to do something. "
+                "Do not create routines for reminders."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "reminder_text": {
+                        "type": "string",
+                        "description": "What to remind the user about. Use Reminder if no content was given.",
+                    },
+                    "delay_minutes": {
+                        "type": "number",
+                        "description": "Relative delay in minutes, if the user gave one.",
+                    },
+                    "delay_seconds": {
+                        "type": "number",
+                        "description": "Relative delay in seconds, if the user gave one.",
+                    },
+                    "due_at_iso": {
+                        "type": "string",
+                        "description": "Absolute local due time as ISO 8601 when known.",
+                    },
+                },
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_reminders",
+            "description": (
+                "List actual scheduled reminders from Jarvis's reminder store. Use this for questions like "
+                "what reminders do I have, show reminders, or list reminders. Do not list routines instead."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "include_delivered": {
+                        "type": "boolean",
+                        "description": "Whether delivered reminders should be included. Default false.",
+                    },
+                },
+                "additionalProperties": False,
+            },
+        },
+    },
+
+    # =========================
     # ROUTINE TOOLS
     # =========================
     {
@@ -830,6 +957,26 @@ TOOL_DEFINITIONS = [
                     "routine_name": {"type": "string"}
                 },
                 "required": ["routine_name"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_all_routines",
+            "description": (
+                "Delete every saved routine as a bulk operation. This is destructive and requires confirmation. "
+                "Use this for delete/remove/clear every routine. Never guess routine names to perform a bulk delete."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "confirmed": {
+                        "type": "boolean",
+                        "description": "True only after the user confirms this exact bulk routine deletion.",
+                    },
+                },
                 "additionalProperties": False,
             },
         },
@@ -956,6 +1103,42 @@ TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "reset_user_profile",
+            "description": (
+                "Reset/delete saved runtime profile details for the active user. This is destructive and "
+                "requires confirmation. Use only for bulk profile clears or profile resets, not for removing "
+                "one detail."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "confirmed": {
+                        "type": "boolean",
+                        "description": "True only after the user confirms this exact profile reset.",
+                    },
+                    "category": {
+                        "type": "string",
+                        "enum": [
+                            "identity",
+                            "response_preferences",
+                            "vocabulary",
+                            "habits",
+                            "workflows",
+                            "project_context",
+                            "jarvis_behavior",
+                            "safety_preferences",
+                            "corrections",
+                            "notes",
+                        ],
+                    },
+                },
+                "additionalProperties": False,
+            },
+        },
+    },
 
     # =========================
     # MEMORY TOOLS
@@ -1054,6 +1237,38 @@ TOOL_DEFINITIONS = [
                     },
                 },
                 "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "clear_all_memories",
+            "description": (
+                "Delete saved Jarvis memories in bulk. This is destructive and requires confirmation. "
+                "Use this for clear memory, forget everything, or delete all memories. Use forget_memory "
+                "for one specific memory."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "confirmed": {
+                        "type": "boolean",
+                        "description": "True only after the user confirms this exact memory clear.",
+                    },
+                    "category": {
+                        "type": "string",
+                        "enum": [
+                            "user_profile",
+                            "preferences",
+                            "aliases",
+                            "workflow_rules",
+                            "jarvis_rules",
+                            "notes",
+                        ],
+                    },
+                },
                 "additionalProperties": False,
             },
         },
@@ -1237,6 +1452,13 @@ def execute_tool_call(tool_name, arguments_json, progress_callback=None):
                 open_widget=arguments.get("open_widget", True),
             )
 
+        if tool_name == "clear_all_todo_tasks":
+            return clear_all_todo_tasks(
+                confirmed=bool(arguments.get("confirmed", False)),
+                include_completed=arguments.get("include_completed", True),
+                open_widget=arguments.get("open_widget", True),
+            )
+
         # =========================
         # SYSTEM TOOLS
         # =========================
@@ -1247,6 +1469,12 @@ def execute_tool_call(tool_name, arguments_json, progress_callback=None):
             return open_application(
                 arguments.get("app_name", ""),
                 progress_callback=progress.emit,
+            )
+
+        if tool_name == "close_application":
+            return close_application(
+                app_name=arguments.get("app_name", ""),
+                confirmed=bool(arguments.get("confirmed", False)),
             )
 
         if tool_name == "search_web":
@@ -1271,6 +1499,22 @@ def execute_tool_call(tool_name, arguments_json, progress_callback=None):
             return set_volume(arguments.get("action", ""))
 
         # =========================
+        # REMINDER TOOLS
+        # =========================
+        if tool_name == "create_reminder":
+            return create_reminder(
+                reminder_text=arguments.get("reminder_text", ""),
+                delay_minutes=arguments.get("delay_minutes"),
+                delay_seconds=arguments.get("delay_seconds"),
+                due_at_iso=arguments.get("due_at_iso"),
+            )
+
+        if tool_name == "list_reminders":
+            return list_reminders(
+                include_delivered=bool(arguments.get("include_delivered", False))
+            )
+
+        # =========================
         # ROUTINE TOOLS
         # =========================
         if tool_name == "create_or_update_routine":
@@ -1286,6 +1530,11 @@ def execute_tool_call(tool_name, arguments_json, progress_callback=None):
 
         if tool_name == "delete_routine":
             return delete_routine(arguments.get("routine_name", ""))
+
+        if tool_name == "delete_all_routines":
+            return delete_all_routines(
+                confirmed=bool(arguments.get("confirmed", False))
+            )
 
         # =========================
         # RUNTIME USER PROFILE TOOLS
@@ -1310,6 +1559,12 @@ def execute_tool_call(tool_name, arguments_json, progress_callback=None):
                 category=arguments.get("category"),
             )
 
+        if tool_name == "reset_user_profile":
+            return reset_user_profile(
+                confirmed=bool(arguments.get("confirmed", False)),
+                category=arguments.get("category"),
+            )
+
         # =========================
         # MEMORY TOOLS
         # =========================
@@ -1330,6 +1585,12 @@ def execute_tool_call(tool_name, arguments_json, progress_callback=None):
         if tool_name == "forget_memory":
             return forget_memory(
                 query=arguments.get("query", ""),
+                category=arguments.get("category"),
+            )
+
+        if tool_name == "clear_all_memories":
+            return clear_all_memories(
+                confirmed=bool(arguments.get("confirmed", False)),
                 category=arguments.get("category"),
             )
 

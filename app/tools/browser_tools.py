@@ -70,7 +70,7 @@ def get_foreground_window_details():
         if not hwnd:
             return {
                 "success": False,
-                "message": "I could not find the active window.",
+                "message": "I couldn't find the active window.",
             }
 
         length = user32.GetWindowTextLengthW(hwnd)
@@ -93,7 +93,7 @@ def get_foreground_window_details():
     except Exception as error:
         return {
             "success": False,
-            "message": f"I could not read the active window: {error}",
+            "message": f"I couldn't read the active window: {error}",
         }
 
 
@@ -217,7 +217,7 @@ def get_current_browser_page():
     if not is_browser_window(window):
         return {
             "success": False,
-            "message": "I don’t think you’re focused on a browser window right now.",
+            "message": "I don't think you're focused on a browser window right now.",
             "active_window": window,
         }
 
@@ -227,7 +227,7 @@ def get_current_browser_page():
     if not url:
         return {
             "success": False,
-            "message": "I found the browser, but I couldn’t read the current URL.",
+            "message": "I found the browser, but I couldn't read the current URL.",
             "active_window": window,
             "title": title,
         }
@@ -236,11 +236,11 @@ def get_current_browser_page():
     domain = parsed.netloc or parsed.path
 
     if title and domain:
-        message = f"You’re on {title}, at {domain}."
+        message = f"You're on {title}, at {domain}."
     elif domain:
-        message = f"You’re on {domain}."
+        message = f"You're on {domain}."
     else:
-        message = f"You’re on {url}."
+        message = f"You're on {url}."
 
     return {
         "success": True,
@@ -341,7 +341,7 @@ Response style:
     except Exception as error:
         return {
             "success": False,
-            "message": f"I could not analyse the current page: {error}",
+            "message": f"I couldn't analyse the current page: {error}",
             "page": page,
             "screenshot_path": image_path,
         }
@@ -389,7 +389,7 @@ def save_current_website(site_name, description=None):
     if memory_result.get("success"):
         return {
             "success": True,
-            "message": f"Got it — I’ll remember {site_name} as {domain}.",
+            "message": f"Got it. I'll remember {site_name} as {domain}.",
             "memory": memory_result,
             "page": page,
         }

@@ -14,7 +14,7 @@ CHAT_HISTORY_PATH = DATA_DIR / "chat_history.json"
 
 DEFAULT_UI_STATE = {
     "status": "STANDBY",
-    "sub_status": "Awaiting wake phrase",
+    "sub_status": "Listening for wake phrase",
     "detail": "",
     "active_widgets": [],
     "orb_position": "center",
