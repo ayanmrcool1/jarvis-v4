@@ -426,19 +426,23 @@ TOOL_DEFINITIONS = [
         "function": {
             "name": "play_youtube_video",
             "description": (
-                "Search YouTube and play the most likely video result. "
-                "Use this when the user asks to play a YouTube video by topic or creator, not when they refer "
-                "to visible items on the current page/screen. For visible on-screen videos, use act_on_screen."
+                "Run a higher-level YouTube play workflow: search/open YouTube results when a topic is given, "
+                "choose a visible result based on the user's preference, click/play it, and verify playback. "
+                "Use this when the user asks to find, choose, or play a YouTube/video result by topic or preference. "
+                "For non-video visible UI actions, use act_on_screen."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The video search query, including creator/channel if provided.",
+                        "description": "Optional video search query, including topic, creator, or channel if provided.",
+                    },
+                    "selection_preference": {
+                        "type": "string",
+                        "description": "Optional preference such as funny, random, best, relevant, or similar.",
                     }
                 },
-                "required": ["query"],
                 "additionalProperties": False,
             },
         },
@@ -1393,7 +1397,10 @@ def execute_tool_call(tool_name, arguments_json, progress_callback=None):
             return search_youtube(arguments.get("query", ""))
 
         if tool_name == "play_youtube_video":
-            return play_youtube_video(arguments.get("query", ""))
+            return play_youtube_video(
+                query=arguments.get("query"),
+                selection_preference=arguments.get("selection_preference"),
+            )
 
         # =========================
         # SCREEN / VISION TOOLS

@@ -1,6 +1,7 @@
 import os
 import json
 import queue
+import re
 import threading
 import time
 from pathlib import Path
@@ -154,8 +155,9 @@ Examples:
 
 YouTube behavior:
 - If the user asks to search on YouTube for a topic, call search_youtube.
-- If the user asks to play a YouTube video by topic or creator and is NOT referring to visible on-screen options, call play_youtube_video.
-- For YouTube playback/action requests, if the user refers to a visible video on this page/screen, use act_on_screen. For visual questions about screen content, use analyse_screen instead.
+- If the user asks to find, choose, or play a video by topic, creator, or preference, call play_youtube_video. This workflow can search YouTube, inspect visible results, choose one, click/play it, and verify playback.
+- If the user asks to choose or play from visible YouTube/video results, use play_youtube_video when the intent is specifically video playback and act_on_screen for other visible UI actions. For visual questions about screen content, use analyse_screen instead.
+- Do not use fast_web_research when the user wants a video put on; use it only when they ask for research, recommendations, or an answer instead of playback.
 - Never turn YouTube requests into Google searches with site:youtube.com.
 
 Search behavior:
@@ -347,6 +349,170 @@ User said:
 
         except Exception as error:
             print(f"Capability gap logging warning: {error}")
+
+    def _normalise_intent_text(self, text):
+        clean = str(text or "").lower().strip()
+        clean = re.sub(r"[^a-z0-9]+", " ", clean)
+        clean = " ".join(clean.split())
+
+        for prefix in [
+            "jarvis can you please ",
+            "jarvis could you please ",
+            "can you please ",
+            "could you please ",
+            "jarvis can you ",
+            "jarvis could you ",
+            "can you ",
+            "could you ",
+            "please ",
+            "jarvis ",
+        ]:
+            if clean.startswith(prefix):
+                return clean[len(prefix):].strip()
+
+        return clean
+
+    def _looks_like_computer_action_request(self, user_text):
+        clean = self._normalise_intent_text(user_text)
+        words = set(clean.split())
+
+        if not words:
+            return False
+
+        action_starts = (
+            "open ",
+            "open up ",
+            "launch ",
+            "close ",
+            "click ",
+            "press ",
+            "select ",
+            "choose ",
+            "pick ",
+            "play ",
+            "search ",
+            "show ",
+            "hide ",
+            "switch ",
+            "run ",
+            "set ",
+            "create ",
+            "add ",
+            "delete ",
+            "remove ",
+        )
+
+        if clean.startswith(action_starts):
+            return True
+
+        action_terms = {
+            "open",
+            "launch",
+            "close",
+            "click",
+            "press",
+            "select",
+            "choose",
+            "pick",
+            "play",
+            "search",
+            "show",
+            "hide",
+            "switch",
+            "run",
+            "set",
+            "create",
+            "add",
+            "delete",
+            "remove",
+        }
+        target_terms = {
+            "app",
+            "application",
+            "website",
+            "browser",
+            "screen",
+            "page",
+            "tab",
+            "window",
+            "video",
+            "file",
+            "folder",
+            "volume",
+            "reminder",
+            "routine",
+            "memory",
+            "todo",
+            "to",
+            "do",
+            "list",
+        }
+
+        return bool(words.intersection(action_terms) and words.intersection(target_terms))
+
+    def _looks_like_toolless_action_confirmation(self, response_text):
+        clean = self._normalise_intent_text(response_text)
+
+        if not clean:
+            return False
+
+        claim_starts = (
+            "opening ",
+            "opened ",
+            "launching ",
+            "closing ",
+            "closed ",
+            "clicking ",
+            "clicked ",
+            "pressing ",
+            "pressed ",
+            "selecting ",
+            "selected ",
+            "choosing ",
+            "picked ",
+            "playing ",
+            "searching ",
+            "searched ",
+            "showing ",
+            "hiding ",
+            "switching ",
+            "running ",
+            "setting ",
+            "creating ",
+            "adding ",
+            "deleting ",
+            "removing ",
+            "i m opening ",
+            "i am opening ",
+            "i m launching ",
+            "i am launching ",
+            "i m closing ",
+            "i am closing ",
+            "i m clicking ",
+            "i am clicking ",
+            "i m playing ",
+            "i am playing ",
+            "i m searching ",
+            "i am searching ",
+            "i ll ",
+            "i will ",
+            "done",
+            "on it",
+            "sure",
+            "okay",
+            "ok",
+        )
+
+        return clean.startswith(claim_starts)
+
+    def _guard_toolless_action_response(self, user_text, response_text):
+        if not self._looks_like_computer_action_request(user_text):
+            return None
+
+        if not self._looks_like_toolless_action_confirmation(response_text):
+            return None
+
+        return polish_spoken_response("I didn't run a tool, so I haven't done that.")
 
     def _tool_start_phrase(self, tool_name, arguments_json="", user_text=""):
         try:
@@ -728,6 +894,14 @@ User said:
                 final_text = assistant_message.content or ""
 
                 if final_text.strip():
+                    guarded_text = self._guard_toolless_action_response(
+                        user_text,
+                        final_text,
+                    )
+
+                    if guarded_text:
+                        final_text = guarded_text
+
                     final_text = polish_spoken_response(final_text.strip())
                     self.messages.append(
                         {
@@ -892,6 +1066,14 @@ User said:
                 final_text = "".join(collected_text).strip()
 
                 if final_text:
+                    guarded_text = self._guard_toolless_action_response(
+                        user_text,
+                        final_text,
+                    )
+
+                    if guarded_text:
+                        final_text = guarded_text
+
                     final_text = polish_spoken_response(final_text)
                     self.messages.append(
                         {

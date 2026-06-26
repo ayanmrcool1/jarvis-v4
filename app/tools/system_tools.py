@@ -235,6 +235,38 @@ def _normalise_lookup_text(text):
     }
 
 
+def _normalise_word_set(value):
+    """
+    Converts lookup metadata into a token set for scoring/set operations.
+    Accepts strings, lists, tuples, sets, and missing values.
+    """
+
+    if not value:
+        return set()
+
+    if isinstance(value, str):
+        return set(_normalise_lookup_text(value)["words"])
+
+    if isinstance(value, (list, tuple, set)):
+        words = set()
+
+        for item in value:
+            if item is None:
+                continue
+
+            if isinstance(item, str):
+                words.update(_normalise_lookup_text(item)["words"])
+            else:
+                token = str(item).lower().strip()
+
+                if token:
+                    words.add(token)
+
+        return words
+
+    return set(_normalise_lookup_text(value)["words"])
+
+
 def _canonical_app_name(app_name):
     clean_name = " ".join(str(app_name or "").lower().strip().split())
 
@@ -251,16 +283,17 @@ def _display_app_name(app_name):
 
 def _looks_like_safe_random_app_request(app_name):
     lookup = _normalise_lookup_text(app_name)
+    lookup_words = _normalise_word_set(lookup.get("word_set") or lookup.get("words"))
 
-    if not lookup["words"].intersection(RANDOM_APP_WORDS):
+    if not lookup_words.intersection(RANDOM_APP_WORDS):
         return False
 
     known_app_words = set()
 
     for name in set(APP_ALIASES) | set(APP_DISPLAY_NAMES):
-        known_app_words.update(_normalise_lookup_text(name)["words"])
+        known_app_words.update(_normalise_word_set(name))
 
-    specific_words = lookup["words"] - RANDOM_APP_WORDS - {
+    specific_words = lookup_words - RANDOM_APP_WORDS - {
         "open",
         "launch",
         "start",

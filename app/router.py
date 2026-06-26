@@ -44,6 +44,8 @@ def get_forced_tool_name(clean_text):
     Main intelligence is handled by stream_ask_with_tools() after local misses.
     """
 
+    stripped_text = _strip_polite_prefix(clean_text)
+
     if looks_like_capability_gap_summary_request(clean_text):
         return "summarize_capability_gaps"
 
@@ -93,8 +95,14 @@ def get_forced_tool_name(clean_text):
     if any(signal in clean_text for signal in active_window_signals):
         return "get_active_window_info"
 
+    if looks_like_screen_action_request(clean_text):
+        return "act_on_screen"
+
     if looks_like_screen_analysis_request(clean_text):
         return "analyse_screen"
+
+    if looks_like_video_play_workflow_request(clean_text):
+        return "play_youtube_video"
 
     # Memory and routine-management intent is deliberately left to the AI brain.
 
@@ -126,18 +134,19 @@ def get_forced_tool_name(clean_text):
         "pull up photos of ",
     ]
 
-    if any(clean_text.startswith(prefix) for prefix in visible_search_prefixes):
+    if any(stripped_text.startswith(prefix) for prefix in visible_search_prefixes):
         return "search_web"
 
     open_keywords = [
         "open ",
+        "open up ",
         "launch ",
         "bring up ",
     ]
 
     for keyword in open_keywords:
-        if clean_text.startswith(keyword):
-            if looks_like_multi_step_open_command(clean_text):
+        if stripped_text.startswith(keyword):
+            if looks_like_multi_step_open_command(stripped_text):
                 return None
 
             return "open_application"
@@ -159,7 +168,7 @@ def get_forced_tool_name(clean_text):
         "show me this screen",
     ]
 
-    if any(clean_text.startswith(prefix) for prefix in protected_show_requests):
+    if any(stripped_text.startswith(prefix) for prefix in protected_show_requests):
         return None
 
     search_keywords = [
@@ -174,7 +183,7 @@ def get_forced_tool_name(clean_text):
     ]
 
     for keyword in sorted(set(search_keywords), key=len, reverse=True):
-        if clean_text.startswith(keyword):
+        if stripped_text.startswith(keyword):
             return "search_web"
 
     # -------------------------
@@ -223,11 +232,138 @@ def _words(clean_text):
     return set(str(clean_text or "").split())
 
 
+def looks_like_screen_action_request(clean_text):
+    stripped = _strip_polite_prefix(clean_text)
+    words = _words(stripped)
+
+    if not words:
+        return False
+
+    if stripped.startswith(
+        (
+            "which ",
+            "what should ",
+            "what would ",
+            "what do you think",
+            "does ",
+            "do you think",
+            "can you see",
+            "what can you see",
+        )
+    ):
+        return False
+
+    visible_refs = {
+        "screen",
+        "monitor",
+        "display",
+        "window",
+        "page",
+        "here",
+        "visible",
+        "this",
+        "that",
+        "these",
+        "those",
+        "results",
+        "result",
+        "option",
+        "options",
+        "button",
+        "link",
+        "thumbnail",
+        "card",
+    }
+    action_terms = {
+        "click",
+        "tap",
+        "press",
+        "select",
+        "choose",
+        "pick",
+        "open",
+        "play",
+        "start",
+        "activate",
+        "close",
+        "dismiss",
+        "scroll",
+        "move",
+    }
+    action_phrases = [
+        "put it on",
+        "put this on",
+        "put one on",
+        "play it",
+        "play one",
+        "open it",
+        "choose one",
+        "pick one",
+        "click one",
+        "select one",
+    ]
+
+    has_action = bool(words.intersection(action_terms)) or any(
+        phrase in stripped
+        for phrase in action_phrases
+    )
+
+    if not has_action:
+        return False
+
+    has_visible_target = bool(words.intersection(visible_refs)) or any(
+        phrase in stripped
+        for phrase in [
+            "on the screen",
+            "on my screen",
+            "on this page",
+            "from this page",
+            "from these results",
+            "one of these",
+            "what im looking at",
+            "what i am looking at",
+        ]
+    )
+
+    if not has_visible_target:
+        return False
+
+    return True
+
+
+def looks_like_video_play_workflow_request(clean_text):
+    stripped = _strip_polite_prefix(clean_text)
+    words = _words(stripped)
+
+    if not words or looks_like_screen_action_request(clean_text):
+        return False
+
+    media_terms = {"video", "videos", "youtube"}
+    workflow_terms = {
+        "find",
+        "search",
+        "play",
+        "put",
+        "watch",
+        "choose",
+        "pick",
+        "random",
+    }
+
+    if not words.intersection(media_terms):
+        return False
+
+    return bool(words.intersection(workflow_terms) or "put it on" in stripped)
+
+
 def looks_like_screen_analysis_request(clean_text):
     stripped = _strip_polite_prefix(clean_text)
     words = _words(stripped)
 
     if not words:
+        return False
+
+    if looks_like_screen_action_request(clean_text):
         return False
 
     screen_refs = {
